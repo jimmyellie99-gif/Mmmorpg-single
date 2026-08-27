@@ -2,337 +2,623 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Story RPG Engine with Quests & Shop</title>
+  <title>Story RPG Engine - Supremacy Edition</title>
   <style>
-    body { margin: 0; background: #111; color: #fff; font-family: sans-serif; text-align: center; }
-    #game-container { position: relative; width: 800px; margin: 20px auto; }
-    canvas { background: #222; display: block; border: 4px solid #444; }
+    body { margin: 0; background: #0b0c10; color: #c5c6c7; font-family: 'Segoe UI', sans-serif; text-align: center; }
+    #game-container { position: relative; width: 1000px; margin: 15px auto; }
+    canvas { background: #1f2833; display: block; border: 4px solid #66fcf1; border-radius: 4px; image-rendering: pixelated; }
     
     #ui-bar {
       position: absolute; top: 10px; left: 10px; right: 10px;
-      display: flex; justify-content: space-between;
-      background: rgba(0,0,0,0.7); padding: 8px 16px; border-radius: 8px;
-      font-size: 14px; pointer-events: none;
+      display: flex; justify-content: space-between; align-items: center;
+      background: rgba(11, 12, 16, 0.85); padding: 8px 16px; border-radius: 6px;
+      font-size: 13px; border: 1px solid #45a29e; pointer-events: none;
     }
-    .gold-text { color: #ffd700; font-weight: bold; }
-    
-    /* Dialogue Overlay */
+    .stat-highlight { color: #66fcf1; font-weight: bold; }
+    .gold-highlight { color: #ffd700; font-weight: bold; }
+    .xp-highlight { color: #ab47bc; font-weight: bold; }
+
+    #skill-bar {
+      position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 10px; background: rgba(11, 12, 16, 0.85);
+      padding: 6px 12px; border-radius: 8px; border: 1px solid #45a29e;
+    }
+    .skill-slot {
+      width: 44px; height: 44px; background: #1f2833; border: 2px solid #66fcf1;
+      border-radius: 4px; display: flex; flex-direction: column; justify-content: center;
+      align-items: center; font-weight: bold; font-size: 12px; position: relative; color: #66fcf1;
+    }
+    .cd-overlay {
+      position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7); display: flex; justify-content: center;
+      align-items: center; color: #ff4d4d; font-size: 14px; font-weight: bold;
+    }
+
+    #stat-window {
+      display: none; position: absolute; top: 50px; left: 50px; width: 260px;
+      background: rgba(11, 12, 16, 0.95); border: 2px solid #66fcf1;
+      border-radius: 8px; padding: 15px; text-align: left; font-size: 13px;
+    }
+    #stat-window h3 { margin: 0 0 10px 0; color: #66fcf1; }
+
     #dialogue-box {
-      display: none; position: absolute; bottom: 20px; left: 40px; right: 40px;
-      background: rgba(20, 20, 35, 0.95); border: 3px solid #ffb703;
+      display: none; position: absolute; bottom: 70px; left: 50px; right: 50px;
+      background: rgba(11, 12, 16, 0.95); border: 2px solid #66fcf1;
       border-radius: 8px; padding: 15px; text-align: left;
     }
-    #dialogue-name { font-weight: bold; color: #ffb703; font-size: 16px; margin-bottom: 5px; }
-    #dialogue-text { color: #edf2f4; font-size: 14px; line-height: 1.4; min-height: 40px; }
-    #dialogue-hint { font-size: 11px; color: #8d99ae; margin-top: 5px; text-align: right; }
+    #dialogue-name { font-weight: bold; color: #66fcf1; font-size: 15px; margin-bottom: 6px; }
+    #dialogue-text { color: #edf2f4; font-size: 14px; line-height: 1.5; min-height: 42px; }
 
-    /* Shop UI */
-    #shop-box {
-      display: none; position: absolute; top: 50px; left: 150px; right: 150px;
-      background: rgba(25, 25, 40, 0.95); border: 3px solid #e63946;
-      border-radius: 8px; padding: 20px; text-align: left;
+    #shop-box, #class-select-box {
+      display: none; position: absolute; top: 40px; left: 200px; right: 200px;
+      background: rgba(11, 12, 16, 0.95); border: 2px solid #ffd700;
+      border-radius: 8px; padding: 20px; text-align: left; max-height: 320px; overflow-y: auto;
     }
-    #shop-title { font-weight: bold; color: #e63946; font-size: 18px; margin-bottom: 15px; }
-    .shop-item {
+    .shop-item, .class-btn {
       display: flex; justify-content: space-between; align-items: center;
-      background: #2b2d42; padding: 8px 12px; margin-bottom: 8px; border-radius: 4px;
+      background: #1f2833; padding: 8px 12px; margin-bottom: 8px; border-radius: 4px; color: #fff;
     }
-    .shop-btn {
-      background: #ffb703; border: none; padding: 6px 12px;
-      font-weight: bold; cursor: pointer; border-radius: 4px;
+    .shop-btn, .class-btn {
+      background: #66fcf1; border: none; padding: 6px 12px; font-weight: bold; cursor: pointer; border-radius: 4px; color: #0b0c10;
     }
-    .shop-btn:hover { background: #ffa000; }
-    #close-shop { margin-top: 10px; background: #6c757d; color: #fff; }
+    .shop-btn:hover, .class-btn:hover { background: #45a29e; color: #fff; }
   </style>
 </head>
 <body>
 
   <div id="game-container">
     <div id="ui-bar">
-      <div>Zone: <span id="zone-display">Oakhaven Town</span></div>
-      <div>Gold: <span id="gold-display" class="gold-text">0</span> | Quest: <span id="quest-display">Talk to Elder</span></div>
+      <div>Zone: <span id="zone-display" class="stat-highlight">Oakhaven Town</span></div>
+      <div>Job: <span id="job-display" class="stat-highlight">Novice</span> | Lv: <span id="level-display" class="stat-highlight">1</span></div>
+      <div>HP: <span id="hp-display" class="stat-highlight">100 / 100</span></div>
+      <div>XP: <span id="xp-display" class="xp-highlight">0 / 50</span> | Gold: <span id="gold-display" class="gold-highlight">0</span></div>
+      <div>Quest: <span id="quest-display" class="stat-highlight">Talk to Elder</span></div>
     </div>
-    
+
+    <div id="skill-bar">
+      <div class="skill-slot">Q<span id="cd-q" class="cd-overlay" style="display:none;"></span></div>
+      <div class="skill-slot">W<span id="cd-w" class="cd-overlay" style="display:none;"></span></div>
+      <div class="skill-slot">E<span id="cd-e" class="cd-overlay" style="display:none;"></span></div>
+      <div class="skill-slot" style="border-color: #ffd700;">R<span id="cd-r" class="cd-overlay" style="display:none;"></span></div>
+    </div>
+
+    <div id="stat-window">
+      <h3>Character Stats [C]</h3>
+      <div>Job: <span id="st-job" class="stat-highlight">Novice</span></div>
+      <div>STR: <span id="st-str">5</span> | DEX: <span id="st-dex">5</span></div>
+      <div>INT: <span id="st-int">5</span> | VIT: <span id="st-vit">5</span></div>
+      <div>ATK: <span id="st-atk">12</span> | DEF: <span id="st-def">2</span></div>
+      <hr style="border-color: #45a29e;">
+      <div>Passive: <span id="st-passive" class="stat-highlight">None</span></div>
+    </div>
+
     <div id="dialogue-box">
       <div id="dialogue-name">NPC Name</div>
       <div id="dialogue-text"></div>
-      <div id="dialogue-hint">Press [Space] or [E] to continue...</div>
     </div>
 
     <div id="shop-box">
-      <div id="shop-title">Bruno's Blacksmith Shop</div>
-      <div class="shop-item">
-        <span>Health Potion (+50 HP)</span>
-        <button class="shop-btn" onclick="buyItem('potion', 20)">Buy (20 Gold)</button>
-      </div>
-      <div class="shop-item">
-        <span>Steel Sword (+10 ATK)</span>
-        <button class="shop-btn" onclick="buyItem('sword', 50)">Buy (50 Gold)</button>
-      </div>
-      <button class="shop-btn" id="close-shop" onclick="closeShop()">Close Shop [Esc]</button>
+      <h3 style="color:#66fcf1; margin-top:0;">Blacksmith's Armory</h3>
+      <div class="shop-item"><span>Health Potion (+50 HP)</span><button class="shop-btn" onclick="buyItem('potion', 25)">Buy (25 G)</button></div>
+      <div class="shop-item"><span>Iron Longsword (+8 ATK)</span><button class="shop-btn" onclick="buyItem('sword', 60)">Buy (60 G)</button></div>
+      <button class="shop-btn" style="background:#c5c6c7; margin-top:10px;" onclick="closeShop()">Close [Esc]</button>
     </div>
 
-    <canvas id="gameCanvas" width="800" height="400"></canvas>
+    <div id="class-select-box">
+      <h3 id="class-select-title" style="color:#ffd700; margin-top:0;">Select Your Job</h3>
+      <div id="class-options"></div>
+    </div>
+
+    <canvas id="gameCanvas" width="1000" height="400"></canvas>
   </div>
 
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-const gameState = {
-  gold: 0,
-  questState: "NOT_STARTED", // NOT_STARTED, ACTIVE, COMPLETED
-  inventory: []
+// Expanded Job System Tree (Base -> 5 Advanced -> 5 Supremacy per Advanced)
+const BASE_JOBS = {
+  "Warrior": { str: 15, dex: 8, int: 4, vit: 14, passive: "Rage: Attack scaling" },
+  "Rogue": { str: 8, dex: 18, int: 6, vit: 8, passive: "Swiftness: Move speed" },
+  "Tank": { str: 10, dex: 6, int: 4, vit: 20, passive: "Thorns: Defense boost" },
+  "Mage": { str: 4, dex: 8, int: 20, vit: 6, passive: "Arcane: CD reduction" },
+  "Archer": { str: 6, dex: 19, int: 7, vit: 7, passive: "Eagle Eye: Critical Chance" },
+  "Priest": { str: 6, dex: 6, int: 16, vit: 12, passive: "Blessing: Passive HP regen" },
+  "Bard": { str: 6, dex: 12, int: 14, vit: 8, passive: "Tempo: Attack speed" },
+  "Druid": { str: 10, dex: 10, int: 12, vit: 12, passive: "Nature: Health scaling" },
+  "Necromancer": { str: 5, dex: 7, int: 18, vit: 8, passive: "Soul Harvest: Lifesteal" },
+  "Paladin": { str: 12, dex: 6, int: 10, vit: 16, passive: "Aegis: Armor scaling" }
 };
+
+const ADVANCED_JOBS = {
+  "Warrior": ["Berserker", "Warlord", "Gladiator", "Dreadnought", "Champion"],
+  "Rogue": ["Assassin", "Shadowblade", "Trickster", "Corsair", "Nightstalker"],
+  "Tank": ["Juggernaut", "Guardian", "Bulwark", "Ironclad", "Colossus"],
+  "Mage": ["Archmage", "Elementalist", "Chronomancer", "Arcanist", "Sorcerer"],
+  "Archer": ["Sniper", "Ranger", "Sharpshooter", "Beastmaster", "Hawkeye"],
+  "Priest": ["High Priest", "Inquisitor", "Monk", "Oracle", "Templar"],
+  "Bard": ["Minstrel", "Troubadour", "Skald", "Siren", "Virtuoso"],
+  "Druid": ["Shapeshifter", "Archdruid", "Stormcaller", "Wildkeeper", "Bramblemancer"],
+  "Necromancer": ["Lich", "Lord of Bones", "Soulreaper", "Plaguebringer", "Deathknight"],
+  "Paladin": ["Crusader", "Holy Avenger", "Sunbreaker", "Justicar", "Divine Shield"]
+};
+
+const SUPREMACY_PREFIXES = ["Omni", "Void", "Celestial", "Prime", "Eternal"];
+
+function getSupremacyJobs(advancedJob) {
+  return SUPREMACY_PREFIXES.map(p => `${p} ${advancedJob}`);
+}
+
+const player = {
+  x: 100, y: 180, width: 32, height: 40, speed: 3.5,
+  hp: 100, maxHp: 100, level: 1, xp: 0, xpToNext: 50, maxLevel: 50,
+  gold: 0, job: "Novice", baseJob: "", advancedJob: "", questState: "NOT_STARTED", slimesKilled: 0,
+  str: 5, dex: 5, int: 5, vit: 5, atk: 12, def: 2, passive: "None",
+  isAttacking: false, attackCooldown: 0, attackTimer: 0, attackBox: { x: 0, y: 0, w: 36, h: 40 },
+  facing: "right", walking: false, animFrame: 0, animTimer: 0,
+  cooldowns: { Q: 0, W: 0, E: 0, R: 0 }, maxCooldowns: { Q: 120, W: 240, E: 360, R: 720 }
+};
+
+const projectiles = [];
+const damageNumbers = [];
+const particles = [];
 
 const keys = {};
 window.addEventListener("keydown", e => {
   keys[e.key] = true;
   if (e.key === " " || e.key === "e" || e.key === "E") handleInteract();
+  if (e.key === "j" || e.key === "J") handleMeleeAttack();
+  if (e.key === "k" || e.key === "K") handleRangedAttack();
+  if (e.key === "c" || e.key === "C") toggleStatWindow();
+  if (["q","w","e","r"].includes(e.key.toLowerCase())) useSkill(e.key.toUpperCase());
   if (e.key === "Escape") closeShop();
 });
 window.addEventListener("keyup", e => keys[e.key] = false);
 
-const player = { x: 100, y: 180, width: 32, height: 32, speed: 4 };
+function spawnDamageNumber(x, y, amount, color = "#ff4d4d") {
+  damageNumbers.push({ x, y, amount: Math.floor(amount), color, life: 40 });
+}
 
-// Typewriter Dialogue Engine
-const dialogueUI = {
-  box: document.getElementById("dialogue-box"),
-  name: document.getElementById("dialogue-name"),
-  text: document.getElementById("dialogue-text"),
-  active: false,
-  currentNPC: null,
-  lineIndex: 0,
-  fullText: "",
-  charIndex: 0,
-  isTyping: false,
-  timer: null
-};
+function spawnSparkParticles(x, y, color = "#ffd700", count = 6) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 4,
+      vy: (Math.random() - 0.5) * 4,
+      color, life: 15, size: Math.random() * 3 + 2
+    });
+  }
+}
 
-function startTypewriter(text) {
-  dialogueUI.fullText = text;
-  dialogueUI.text.innerText = "";
-  dialogueUI.charIndex = 0;
-  dialogueUI.isTyping = true;
-  clearInterval(dialogueUI.timer);
+class Projectile {
+  constructor(x, y, vx, vy, isEnemy, damage, color = "#66fcf1") {
+    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.isEnemy = isEnemy; this.damage = damage; this.color = color; this.alive = true;
+  }
+  update() {
+    this.x += this.vx; this.y += this.vy;
+    particles.push({ x: this.x, y: this.y, vx: (Math.random()-0.5), vy: (Math.random()-0.5), color: this.color, life: 8, size: 2 });
+    if (this.x < 0 || this.x > 1000 || this.y < 0 || this.y > 400) this.alive = false;
 
-  dialogueUI.timer = setInterval(() => {
-    if (dialogueUI.charIndex < dialogueUI.fullText.length) {
-      dialogueUI.text.innerText += dialogueUI.fullText.charAt(dialogueUI.charIndex);
-      dialogueUI.charIndex++;
+    if (this.isEnemy) {
+      const dist = Math.hypot((player.x + 16) - this.x, (player.y + 20) - this.y);
+      if (dist < 20) {
+        player.hp = Math.max(0, player.hp - Math.max(1, this.damage - player.def));
+        spawnDamageNumber(player.x + 16, player.y, this.damage, "#ff0000");
+        spawnSparkParticles(player.x + 16, player.y + 20, "#ff4d4d");
+        this.alive = false; updateUI();
+      }
     } else {
-      dialogueUI.isTyping = false;
-      clearInterval(dialogueUI.timer);
+      mobs.forEach(m => {
+        if (m.alive) {
+          const dist = Math.hypot((m.x + m.width / 2) - this.x, (m.y + m.height / 2) - this.y);
+          if (dist < 20) {
+            m.takeDamage(this.damage);
+            spawnSparkParticles(m.x + m.width/2, m.y + m.height/2, this.color);
+            this.alive = false;
+          }
+        }
+      });
     }
-  }, 25);
+  }
+  draw(ctx) {
+    ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, Math.PI * 2); ctx.fill();
+  }
 }
 
-function completeTypewriterImmediately() {
-  clearInterval(dialogueUI.timer);
-  dialogueUI.text.innerText = dialogueUI.fullText;
-  dialogueUI.isTyping = false;
+function addXP(amount) {
+  if (player.level >= player.maxLevel) return;
+  player.xp += amount;
+  while (player.xp >= player.xpToNext && player.level < player.maxLevel) {
+    player.xp -= player.xpToNext; player.level++;
+    player.xpToNext = Math.floor(50 * Math.pow(1.3, player.level - 1));
+    player.maxHp += 15 + player.vit; player.hp = player.maxHp; player.atk += 3;
+
+    if (player.level === 10) promptBasicJobSelection();
+    if (player.level === 25 && player.baseJob) promptAdvancedJobSelection();
+    if (player.level === 40 && player.advancedJob) promptSupremacyJobSelection();
+  }
+  updateUI();
 }
 
-// NPC & Quest Setup
-class NPC {
-  constructor(name, x, y, color, getDialogue, onComplete) {
-    this.name = name;
-    this.x = x; this.y = y;
-    this.width = 32; this.height = 32;
-    this.color = color;
-    this.getDialogue = getDialogue;
-    this.onComplete = onComplete;
+function promptBasicJobSelection() {
+  const box = document.getElementById("class-select-box"); const opts = document.getElementById("class-options");
+  document.getElementById("class-select-title").innerText = "Choose Base Job (Level 10)";
+  opts.innerHTML = "";
+  Object.keys(BASE_JOBS).forEach(jobKey => {
+    const btn = document.createElement("button"); btn.className = "class-btn";
+    btn.innerText = `${jobKey} (STR:${BASE_JOBS[jobKey].str} DEX:${BASE_JOBS[jobKey].dex} INT:${BASE_JOBS[jobKey].int})`;
+    btn.onclick = () => selectJob(jobKey, "base"); opts.appendChild(btn);
+  });
+  box.style.display = "block";
+}
+
+function promptAdvancedJobSelection() {
+  const box = document.getElementById("class-select-box"); const opts = document.getElementById("class-options");
+  document.getElementById("class-select-title").innerText = "Choose Advanced Job (Level 25)";
+  opts.innerHTML = "";
+  ADVANCED_JOBS[player.baseJob].forEach(advName => {
+    const btn = document.createElement("button"); btn.className = "class-btn";
+    btn.innerText = `${advName} [Advanced ${player.baseJob}]`;
+    btn.onclick = () => selectJob(advName, "advanced"); opts.appendChild(btn);
+  });
+  box.style.display = "block";
+}
+
+function promptSupremacyJobSelection() {
+  const box = document.getElementById("class-select-box"); const opts = document.getElementById("class-options");
+  document.getElementById("class-select-title").innerText = "Choose Supremacy Job (Level 40)";
+  opts.innerHTML = "";
+  const supremacyOptions = getSupremacyJobs(player.advancedJob);
+  supremacyOptions.forEach(supName => {
+    const btn = document.createElement("button"); btn.className = "class-btn";
+    btn.innerText = `${supName} [Supremacy]`;
+    btn.onclick = () => selectJob(supName, "supremacy"); opts.appendChild(btn);
+  });
+  box.style.display = "block";
+}
+
+function selectJob(jobName, tier) {
+  if (tier === "base") {
+    player.baseJob = jobName; player.job = jobName;
+    const stats = BASE_JOBS[jobName];
+    player.str = stats.str; player.dex = stats.dex; player.int = stats.int; player.vit = stats.vit; player.passive = stats.passive;
+  } else if (tier === "advanced") {
+    player.advancedJob = jobName; player.job = jobName;
+    player.str += 12; player.dex += 12; player.int += 12; player.vit += 12;
+  } else if (tier === "supremacy") {
+    player.job = jobName;
+    player.str += 25; player.dex += 25; player.int += 25; player.vit += 25;
+    player.passive = `Supremacy Aura: ${jobName}`;
+  }
+  player.atk = player.str * 2 + player.dex; player.def = Math.floor(player.vit / 2);
+  document.getElementById("class-select-box").style.display = "none"; updateUI();
+}
+
+function useSkill(key) {
+  if (player.cooldowns[key] > 0) return;
+  player.cooldowns[key] = player.maxCooldowns[key];
+  player.isAttacking = true; player.attackTimer = 15;
+  if (key === "Q") performAreaDamage(100, player.atk * 1.5, "#66fcf1");
+  if (key === "W") performAreaDamage(160, player.atk * 2.2, "#ab47bc");
+  if (key === "E") { player.hp = Math.min(player.maxHp, player.hp + 50); spawnDamageNumber(player.x + 16, player.y, 50, "#44ff44"); spawnSparkParticles(player.x + 16, player.y + 20, "#44ff44", 12); }
+  if (key === "R") performAreaDamage(250, player.atk * 4.0, "#ffd700");
+}
+
+function performAreaDamage(range, damage, particleColor) {
+  mobs.forEach(mob => {
+    const dist = Math.hypot((player.x + 16) - (mob.x + mob.width / 2), (player.y + 20) - (mob.y + mob.height / 2));
+    if (dist <= range && mob.alive) {
+      mob.takeDamage(damage);
+      spawnSparkParticles(mob.x + mob.width / 2, mob.y + mob.height / 2, particleColor, 8);
+    }
+  });
+}
+
+function handleMeleeAttack() {
+  if (player.attackCooldown > 0) return;
+  player.isAttacking = true; player.attackTimer = 12; player.attackCooldown = 20;
+  player.attackBox.x = player.facing === "right" ? player.x + player.width : player.x - player.attackBox.w;
+  player.attackBox.y = player.y;
+
+  mobs.forEach(mob => {
+    if (mob.alive && player.attackBox.x < mob.x + mob.width && player.attackBox.x + player.attackBox.w > mob.x &&
+        player.attackBox.y < mob.y + mob.height && player.attackBox.y + player.attackBox.h > mob.y) {
+      mob.takeDamage(player.atk);
+      spawnSparkParticles(mob.x + mob.width / 2, mob.y + mob.height / 2, "#ffd700");
+    }
+  });
+}
+
+function handleRangedAttack() {
+  if (player.attackCooldown > 0) return;
+  player.attackCooldown = 25; player.isAttacking = true; player.attackTimer = 10;
+  const speed = player.facing === "right" ? 7 : -7;
+  projectiles.push(new Projectile(player.x + 16, player.y + 20, speed, 0, false, player.atk * 0.8));
+}
+
+function drawDetailedSprite(ctx, x, y, type, facing = "right", animFrame = 0, isAttacking = false) {
+  ctx.save();
+  ctx.translate(x, y);
+
+  if (type === "player") {
+    const legOffset = (animFrame % 2 === 0) ? 0 : 3;
+    ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(16, 38, 12, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#1d3557";
+    ctx.fillRect(8, 28 - legOffset, 6, 10 + legOffset);
+    ctx.fillRect(18, 28 + legOffset, 6, 10 - legOffset);
+    ctx.fillStyle = "#457b9d"; ctx.fillRect(6, 14, 20, 14);
+    ctx.fillStyle = "#a8dadc"; ctx.fillRect(10, 16, 12, 10);
+    ctx.fillStyle = "#f1faee"; ctx.fillRect(8, 2, 16, 12);
+    ctx.fillStyle = "#e63946"; ctx.fillRect(6, 0, 20, 5);
+    ctx.fillRect(facing === "right" ? 4 : 22, 2, 6, 10);
+    ctx.fillStyle = "#1d3557";
+    const eyeX = facing === "right" ? 18 : 10;
+    ctx.fillRect(eyeX, 6, 3, 3);
+
+    if (isAttacking) {
+      ctx.strokeStyle = "#66fcf1"; ctx.lineWidth = 4;
+      ctx.beginPath();
+      if (facing === "right") {
+        ctx.arc(28, 18, 20, -Math.PI / 3, Math.PI / 3);
+      } else {
+        ctx.arc(4, 18, 20, Math.PI * 2 / 3, Math.PI * 4 / 3);
+      }
+      ctx.stroke();
+    }
+  } 
+  else if (type === "elder") {
+    ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(16, 36, 10, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#4a148c"; ctx.fillRect(6, 10, 20, 26);
+    ctx.fillStyle = "#ffd54f"; ctx.fillRect(10, 10, 12, 26);
+    ctx.fillStyle = "#ffcc80"; ctx.fillRect(10, 4, 12, 8);
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(8, 10, 16, 12);
+  }
+  else if (type === "smith") {
+    ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(16, 36, 12, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#37474f"; ctx.fillRect(8, 14, 16, 22);
+    ctx.fillStyle = "#bf360c"; ctx.fillRect(8, 18, 16, 14);
+    ctx.fillStyle = "#ffcc80"; ctx.fillRect(10, 4, 12, 10);
+    ctx.fillStyle = "#d84315"; ctx.fillRect(6, 14, 6, 10);
+  }
+  else if (type === "slime") {
+    const pulse = Math.sin(animFrame * 0.2) * 2;
+    ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(16, 28, 14, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#4895ef"; ctx.beginPath(); ctx.ellipse(16, 20 + pulse/2, 14 + pulse, 10 - pulse, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#4cc9f0"; ctx.beginPath(); ctx.ellipse(14, 16 + pulse/2, 10, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#ffffff"; ctx.fillRect(10, 16, 3, 4); ctx.fillRect(18, 16, 3, 4);
+    ctx.fillStyle = "#000000"; ctx.fillRect(11, 17, 2, 2); ctx.fillRect(19, 17, 2, 2);
+  }
+  else if (type === "skeleton") {
+    const bob = Math.sin(animFrame * 0.1) * 2;
+    ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(16, 36, 10, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#e0e0e0";
+    ctx.fillRect(12, 4 + bob, 8, 8);
+    ctx.fillRect(14, 12 + bob, 4, 14);
+    ctx.fillRect(8, 14 + bob, 16, 3);
+    ctx.fillRect(10, 26, 4, 10); ctx.fillRect(18, 26, 4, 10);
+    ctx.fillStyle = "#000000"; ctx.fillRect(13, 6 + bob, 2, 2); ctx.fillRect(17, 6 + bob, 2, 2);
+  }
+  else if (type === "drake") {
+    const wing = Math.sin(animFrame * 0.3) * 6;
+    ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(16, 36, 14, 4, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#d90429"; ctx.fillRect(8, 12, 16, 18);
+    ctx.fillStyle = "#ef233c"; 
+    ctx.beginPath(); ctx.moveTo(8, 14); ctx.lineTo(-4, 4 + wing); ctx.lineTo(8, 20); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(24, 14); ctx.lineTo(36, 4 + wing); ctx.lineTo(24, 20); ctx.fill();
+    ctx.fillStyle = "#d90429"; ctx.fillRect(18, 6, 12, 8);
+    ctx.fillStyle = "#ffb703"; ctx.fillRect(24, 8, 2, 2);
+  }
+  else if (type === "boss") {
+    const floatY = Math.sin(animFrame * 0.08) * 4;
+    ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.beginPath(); ctx.ellipse(24, 52, 24, 6, 0, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = "#2b2d42"; ctx.fillRect(4, 8 + floatY, 40, 40);
+    ctx.fillStyle = "#8d99ae"; ctx.fillRect(10, 14 + floatY, 28, 28);
+    ctx.fillStyle = "#d90429"; ctx.fillRect(18, 20 + floatY, 12, 12);
+    ctx.fillStyle = "#ffb703"; ctx.fillRect(12, 12 + floatY, 6, 3); ctx.fillRect(30, 12 + floatY, 6, 3);
   }
 
-  draw(ctx) {
-    ctx.fillStyle = this.color;
-    ctx.fillRect(this.x, this.y, this.width, this.height);
-    ctx.fillStyle = "#fff";
-    ctx.font = "11px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(this.name, this.x + 16, this.y - 8);
+  ctx.restore();
+}
 
-    const dist = Math.hypot((player.x + 16) - (this.x + 16), (player.y + 16) - (this.y + 16));
-    if (dist < 50 && !dialogueUI.active) {
-      ctx.fillStyle = "#ffb703";
-      ctx.font = "bold 10px sans-serif";
-      ctx.fillText("[E] Talk", this.x + 16, this.y - 22);
-    }
+class NPC {
+  constructor(name, spriteType, x, y, getDialogue, onComplete) {
+    this.name = name; this.spriteType = spriteType; this.x = x; this.y = y;
+    this.getDialogue = getDialogue; this.onComplete = onComplete;
+  }
+  draw(ctx, tick) {
+    drawDetailedSprite(ctx, this.x, this.y, this.spriteType, "right", tick);
+    ctx.fillStyle = "#66fcf1"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(this.name, this.x + 16, this.y - 8);
   }
 }
 
 const npcs = [
-  new NPC("Elder Eldrin", 60, 100, "#9d4edd", () => {
-    if (gameState.questState === "NOT_STARTED") {
-      return [
-        "Greetings adventurer! A dangerous Forest Slime is blocking the passage.",
-        "Defeat the slime in the Whispering Woods, and I will open the gate to Zone 2!"
-      ];
-    } else if (gameState.questState === "ACTIVE") {
-      return ["The Forest Slime is still alive! Go defeat it in Zone 1."];
-    } else {
-      return ["Thank you for slaying the monster! The path to Zone 2 is clear."];
-    }
-  }, () => {
-    if (gameState.questState === "NOT_STARTED") {
-      gameState.questState = "ACTIVE";
-      document.getElementById("quest-display").innerText = "Defeat Forest Slime";
-    }
-  }),
-  new NPC("Blacksmith Bruno", 150, 250, "#e63946", () => [
-    "Welcome to my forge! Take a look at my items."
-  ], () => {
-    openShop();
-  })
+  new NPC("Elder Eldrin", "elder", 60, 180, () => {
+    if (player.questState === "NOT_STARTED") return ["Defeat 3 Forest Slimes in Zone 1 to unlock Zone 2!"];
+    else if (player.questState === "ACTIVE") return [`Slimes Defeated: ${player.slimesKilled} / 3`];
+    else return ["The path to Zone 2 is open! Proceed with caution."];
+  }, () => { if (player.questState === "NOT_STARTED") player.questState = "ACTIVE"; }),
+  new NPC("Blacksmith Bruno", "smith", 150, 260, () => ["Need upgrades?"], () => openShop())
 ];
 
-// Monster & Combat Drops
-class ZoneMonster {
-  constructor(name, x, y, minX, maxX, color, isTarget) {
-    this.name = name;
-    this.x = x; this.y = y;
-    this.minX = minX; this.maxX = maxX;
-    this.color = color; this.vx = 1.5;
-    this.isTarget = isTarget;
-    this.alive = true;
+class RespawningMob {
+  constructor(name, spriteType, zoneMinX, zoneMaxX, y, maxHp, atk, xpYield, goldYield, isRanged = false, isBoss = false) {
+    this.name = name; this.spriteType = spriteType; this.zoneMinX = zoneMinX; this.zoneMaxX = zoneMaxX;
+    this.x = zoneMinX + Math.random() * (zoneMaxX - zoneMinX - 40); this.y = y;
+    this.width = isBoss ? 48 : 32; this.height = isBoss ? 48 : 40;
+    this.maxHp = maxHp; this.hp = maxHp; this.atk = atk; this.xpYield = xpYield; this.goldYield = goldYield;
+    this.isRanged = isRanged; this.isBoss = isBoss; this.alive = true; this.vx = 1.2; this.respawnTimer = 0; this.shootTimer = 0;
+    this.animFrame = 0;
   }
-
   update() {
-    if (!this.alive) return;
+    if (!this.alive) {
+      if (--this.respawnTimer <= 0) { this.alive = true; this.hp = this.maxHp; }
+      return;
+    }
+    this.animFrame++;
     this.x += this.vx;
-    if (this.x <= this.minX || this.x >= this.maxX - 32) this.vx *= -1;
+    if (this.x <= this.zoneMinX || this.x >= this.zoneMaxX - this.width) this.vx *= -1;
 
-    // Defeat Monster on Touch (Simple Action Collision)
-    const dist = Math.hypot((player.x + 16) - (this.x + 16), (player.y + 16) - (this.y + 16));
-    if (dist < 30) {
-      this.alive = false;
-      gameState.gold += 30;
-      document.getElementById("gold-display").innerText = gameState.gold;
+    if (this.isRanged && ++this.shootTimer > 120) {
+      this.shootTimer = 0;
+      const dir = player.x < this.x ? -4 : 4;
+      projectiles.push(new Projectile(this.x + 16, this.y + 16, dir, 0, true, this.atk, "#ff0055"));
+    }
 
-      if (this.isTarget && gameState.questState === "ACTIVE") {
-        gameState.questState = "COMPLETED";
-        document.getElementById("quest-display").innerText = "Quest Completed!";
+    const dist = Math.hypot((player.x + 16) - (this.x + this.width / 2), (player.y + 20) - (this.y + this.height / 2));
+    if (dist < 24) { player.hp = Math.max(0, player.hp - (this.atk * 0.03)); updateUI(); }
+  }
+  takeDamage(amount) {
+    if (!this.alive) return;
+    this.hp -= amount;
+    spawnDamageNumber(this.x + 16, this.y, amount);
+    if (this.hp <= 0) {
+      this.alive = false; this.respawnTimer = 240;
+      addXP(this.xpYield); player.gold += this.goldYield;
+      if (this.spriteType === "slime" && player.questState === "ACTIVE") {
+        player.slimesKilled++;
+        if (player.slimesKilled >= 3) {
+          player.questState = "COMPLETED";
+          document.getElementById("quest-display").innerText = "Completed!";
+        } else {
+          document.getElementById("quest-display").innerText = `Slimes: ${player.slimesKilled}/3`;
+        }
       }
+      updateUI();
     }
   }
-
   draw(ctx, tick) {
     if (!this.alive) return;
-    const bounce = Math.sin(tick * 0.1) * 4;
-    ctx.fillStyle = this.color;
-    ctx.fillRect(this.x, this.y + bounce, 32, 32 - bounce);
-    ctx.fillStyle = "#fff";
-    ctx.font = "10px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText(this.name, this.x + 16, this.y - 8);
+    const facing = this.vx > 0 ? "right" : "left";
+    drawDetailedSprite(ctx, this.x, this.y, this.spriteType, facing, this.animFrame);
+    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(this.x, this.y - 12, this.width, 4);
+    ctx.fillStyle = "#e63946"; ctx.fillRect(this.x, this.y - 12, (this.hp / this.maxHp) * this.width, 4);
   }
 }
 
-const monsters = [
-  new ZoneMonster("Forest Slime", 350, 180, 250, 500, "#44ff44", true),
-  new ZoneMonster("Cave Skeleton", 650, 180, 520, 780, "#cccccc", false)
+const mobs = [
+  new RespawningMob("Forest Slime", "slime", 230, 440, 180, 40, 6, 20, 15),
+  new RespawningMob("Forest Slime", "slime", 250, 440, 280, 40, 6, 20, 15),
+  new RespawningMob("Cave Skeleton", "skeleton", 460, 690, 160, 80, 12, 45, 30),
+  new RespawningMob("Cave Drake", "drake", 480, 690, 260, 110, 16, 60, 45, true),
+  new RespawningMob("VOID TITAN (BOSS)", "boss", 800, 960, 200, 400, 30, 300, 250, true, true)
 ];
 
-// Dialogue Interactivity
+const dialogueUI = { box: document.getElementById("dialogue-box"), name: document.getElementById("dialogue-name"), text: document.getElementById("dialogue-text"), active: false, currentNPC: null };
+
 function handleInteract() {
-  if (dialogueUI.active) {
-    if (dialogueUI.isTyping) {
-      completeTypewriterImmediately();
-    } else {
-      dialogueUI.lineIndex++;
-      const lines = dialogueUI.currentNPC.getDialogue();
-      if (dialogueUI.lineIndex < lines.length) {
-        startTypewriter(lines[dialogueUI.lineIndex]);
-      } else {
-        dialogueUI.active = false;
-        dialogueUI.box.style.display = "none";
-        if (dialogueUI.currentNPC.onComplete) dialogueUI.currentNPC.onComplete();
-      }
-    }
-  } else {
+  if (dialogueUI.active) { dialogueUI.active = false; dialogueUI.box.style.display = "none"; if (dialogueUI.currentNPC.onComplete) dialogueUI.currentNPC.onComplete(); }
+  else {
     npcs.forEach(npc => {
-      const dist = Math.hypot((player.x + 16) - (npc.x + 16), (player.y + 16) - (npc.y + 16));
-      if (dist < 50) {
-        dialogueUI.active = true;
-        dialogueUI.currentNPC = npc;
-        dialogueUI.lineIndex = 0;
-        dialogueUI.name.innerText = npc.name;
-        dialogueUI.box.style.display = "block";
-        startTypewriter(npc.getDialogue()[0]);
+      if (Math.hypot((player.x + 16) - (npc.x + 16), (player.y + 20) - (npc.y + 20)) < 50) {
+        dialogueUI.active = true; dialogueUI.currentNPC = npc; dialogueUI.name.innerText = npc.name;
+        dialogueUI.text.innerText = npc.getDialogue()[0]; dialogueUI.box.style.display = "block";
       }
     });
   }
 }
 
-// Shop System Logic
 function openShop() { document.getElementById("shop-box").style.display = "block"; }
 function closeShop() { document.getElementById("shop-box").style.display = "none"; }
-
+function toggleStatWindow() { const win = document.getElementById("stat-window"); win.style.display = win.style.display === "block" ? "none" : "block"; updateStatWindow(); }
+function updateStatWindow() {
+  document.getElementById("st-job").innerText = player.job; document.getElementById("st-str").innerText = player.str;
+  document.getElementById("st-dex").innerText = player.dex; document.getElementById("st-int").innerText = player.int;
+  document.getElementById("st-vit").innerText = player.vit; document.getElementById("st-atk").innerText = player.atk;
+  document.getElementById("st-def").innerText = player.def; document.getElementById("st-passive").innerText = player.passive;
+}
 function buyItem(item, cost) {
-  if (gameState.gold >= cost) {
-    gameState.gold -= cost;
-    gameState.inventory.push(item);
-    document.getElementById("gold-display").innerText = gameState.gold;
-    alert(`Bought ${item}!`);
-  } else {
-    alert("Not enough gold!");
-  }
+  if (player.gold >= cost) {
+    player.gold -= cost;
+    if (item === "potion") player.hp = Math.min(player.maxHp, player.hp + 50);
+    if (item === "sword") player.atk += 8;
+    updateUI();
+  } else alert("Not enough gold!");
+}
+
+function updateUI() {
+  document.getElementById("hp-display").innerText = `${Math.ceil(player.hp)} / ${player.maxHp}`;
+  document.getElementById("xp-display").innerText = `${player.xp} / ${player.xpToNext}`;
+  document.getElementById("level-display").innerText = player.level;
+  document.getElementById("gold-display").innerText = player.gold;
+  document.getElementById("job-display").innerText = player.job;
+  updateStatWindow();
 }
 
 function update() {
+  if (player.attackCooldown > 0) player.attackCooldown--;
+  if (player.attackTimer > 0) player.attackTimer--; else player.isAttacking = false;
+
+  player.walking = false;
   if (!dialogueUI.active && document.getElementById("shop-box").style.display !== "block") {
-    if (keys["ArrowRight"] || keys["d"]) player.x += player.speed;
-    if (keys["ArrowLeft"] || keys["a"]) player.x -= player.speed;
-    if (keys["ArrowUp"] || keys["w"]) player.y -= player.speed;
-    if (keys["ArrowDown"] || keys["s"]) player.y += player.speed;
+    if (keys["ArrowRight"] || keys["d"]) { player.x += player.speed; player.facing = "right"; player.walking = true; }
+    if (keys["ArrowLeft"] || keys["a"]) { player.x -= player.speed; player.facing = "left"; player.walking = true; }
+    if (keys["ArrowUp"] || keys["w"]) { player.y -= player.speed; player.walking = true; }
+    if (keys["ArrowDown"] || keys["s"]) { player.y += player.speed; player.walking = true; }
   }
 
-  // Zone 2 Barrier Enforcement based on Quest State
-  if (gameState.questState !== "COMPLETED" && player.x > 500 - player.width) {
-    player.x = 500 - player.width; // Block player from entering Zone 2
+  if (player.walking) {
+    player.animTimer++;
+    if (player.animTimer % 8 === 0) player.animFrame++;
+  } else { player.animFrame = 0; }
+
+  if (player.questState !== "COMPLETED" && player.x > 450 - player.width) {
+    player.x = 450 - player.width;
   }
 
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
   player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
 
-  monsters.forEach(m => m.update());
+  ["Q","W","E","R"].forEach(k => {
+    if (player.cooldowns[k] > 0) {
+      player.cooldowns[k]--; const overlay = document.getElementById(`cd-${k.toLowerCase()}`);
+      overlay.style.display = "flex"; overlay.innerText = Math.ceil(player.cooldowns[k] / 60);
+    } else document.getElementById(`cd-${k.toLowerCase()}`).style.display = "none";
+  });
+
+  mobs.forEach(m => m.update());
+  projectiles.forEach((p, index) => { p.update(); if (!p.alive) projectiles.splice(index, 1); });
+  particles.forEach((pt, index) => { pt.x += pt.vx; pt.y += pt.vy; pt.life--; if (pt.life <= 0) particles.splice(index, 1); });
+  damageNumbers.forEach((d, index) => { d.y -= 0.5; d.life--; if (d.life <= 0) damageNumbers.splice(index, 1); });
 
   const zoneDisplay = document.getElementById("zone-display");
   if (player.x < 220) zoneDisplay.innerText = "Oakhaven Town";
-  else if (player.x < 500) zoneDisplay.innerText = "Whispering Woods (Zone 1)";
-  else zoneDisplay.innerText = "Ashen Caverns (Zone 2)";
+  else if (player.x < 450) zoneDisplay.innerText = "Whispering Woods";
+  else if (player.x < 700) zoneDisplay.innerText = "Ashen Caverns";
+  else zoneDisplay.innerText = "Dragons Peak";
 }
 
 let tick = 0;
 function draw() {
-  tick++;
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  tick++; ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  ctx.fillStyle = "#2d6a4f"; ctx.fillRect(0, 0, 220, 400);
+  ctx.fillStyle = "#1b4332"; ctx.fillRect(220, 0, 230, 400);
+  ctx.fillStyle = "#2b2d42"; ctx.fillRect(450, 0, 250, 400);
+  ctx.fillStyle = "#6b705c"; ctx.fillRect(700, 0, 300, 400);
 
-  // Background Zones
-  ctx.fillStyle = "#3a5a40"; ctx.fillRect(0, 0, 220, 400);
-  ctx.fillStyle = "#1b4332"; ctx.fillRect(220, 0, 280, 400);
-  ctx.fillStyle = "#2b2d42"; ctx.fillRect(500, 0, 300, 400);
-
-  // Zone 2 Barrier Wall (Locked state)
-  if (gameState.questState !== "COMPLETED") {
-    ctx.fillStyle = "rgba(230, 57, 70, 0.5)";
-    ctx.fillRect(496, 0, 8, 400);
+  if (player.questState !== "COMPLETED") {
+    ctx.fillStyle = "rgba(230, 57, 70, 0.6)"; ctx.fillRect(446, 0, 8, 400);
   }
 
-  npcs.forEach(npc => npc.draw(ctx));
-  monsters.forEach(m => m.draw(ctx, tick));
+  npcs.forEach(npc => npc.draw(ctx, tick));
+  mobs.forEach(m => m.draw(ctx, tick));
+  projectiles.forEach(p => p.draw(ctx));
 
-  // Player
-  const walkCycle = dialogueUI.active ? 0 : Math.abs(Math.sin(tick * 0.15)) * 6;
-  ctx.fillStyle = "#ffb703";
-  ctx.fillRect(player.x, player.y - walkCycle, player.width, player.height);
+  drawDetailedSprite(ctx, player.x, player.y, "player", player.facing, player.animFrame, player.isAttacking);
+
+  particles.forEach(pt => {
+    ctx.fillStyle = pt.color; ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2); ctx.fill();
+  });
+
+  damageNumbers.forEach(d => {
+    ctx.fillStyle = d.color; ctx.font = "bold 13px sans-serif"; ctx.fillText(d.amount, d.x, d.y);
+  });
 }
 
-function loop() {
-  update();
-  draw();
-  requestAnimationFrame(loop);
-}
+function loop() { update(); draw(); requestAnimationFrame(loop); }
 loop();
 </script>
 </body>

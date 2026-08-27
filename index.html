@@ -364,6 +364,13 @@ function handleRangedAttack() {
   projectiles.push(new Projectile(player.x + 16, player.y + 20, speed, 0, false, player.atk * 0.8, "#66fcf1", currentZone));
 }
 
+function drawHouse(ctx, x, y, wallColor, roofColor) {
+  ctx.fillStyle = wallColor; ctx.fillRect(x, y + 30, 80, 50);
+  ctx.fillStyle = "#2b2d42"; ctx.fillRect(x + 30, y + 50, 20, 30);
+  ctx.fillStyle = roofColor;
+  ctx.beginPath(); ctx.moveTo(x - 10, y + 30); ctx.lineTo(x + 40, y); ctx.lineTo(x + 90, y + 30); ctx.fill();
+}
+
 function drawDetailedSprite(ctx, x, y, type, facing = "right", animFrame = 0, isAttacking = false) {
   ctx.save();
   ctx.translate(x, y);
@@ -685,46 +692,53 @@ function drawEnvironment(ctx, zone) {
   // Draw Portal at Right Edge if Zone Quest Completed
   const portalUnlocked = ZONES[zone].questState === "COMPLETED";
   if (portalUnlocked && zone < ZONES.length - 1) {
-    const pX = 940, pY = 160;
-    ctx.fillStyle = "rgba(102, 252, 241, 0.3)";
-    ctx.beginPath(); ctx.ellipse(pX + 20, pY + 40, 25, 45, 0, 0, Math.PI*2); ctx.fill();
-    ctx.strokeStyle = "#66fcf1"; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.ellipse(pX + 20, pY + 40, 18 + Math.sin(tick*0.1)*3, 35 + Math.sin(tick*0.1)*3, 0, 0, Math.PI*2); ctx.stroke();
-    ctx.fillStyle = "#66fcf1"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText("PORTAL", pX + 20, pY - 10);
+    ctx.save();
+    const portalGlow = Math.sin(Date.now() * 0.005) * 5;
+    ctx.fillStyle = "#66fcf1";
+    ctx.beginPath();
+    ctx.ellipse(960, 200, 20 + portalGlow, 50 + portalGlow, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("PORTAL", 960, 135);
+    ctx.restore();
   }
 }
 
-function drawHouse(ctx, x, y, wallColor, roofColor) {
-  ctx.fillStyle = wallColor; ctx.fillRect(x, y + 40, 100, 70);
-  ctx.fillStyle = roofColor; ctx.beginPath(); ctx.moveTo(x - 10, y + 40); ctx.lineTo(x + 50, y); ctx.lineTo(x + 110, y + 40); ctx.fill();
-  ctx.fillStyle = "#212529"; ctx.fillRect(x + 38, y + 75, 24, 35); // Door
-  ctx.fillStyle = "#ffb703"; ctx.fillRect(x + 15, y + 55, 18, 18); ctx.fillRect(x + 67, y + 55, 18, 18); // Windows
-}
-
-let tick = 0;
+let tickCount = 0;
 function draw() {
-  tick++; ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   
   drawEnvironment(ctx, currentZone);
-
-  npcs.forEach(npc => npc.draw(ctx, tick));
-  mobs.forEach(m => m.draw(ctx, tick));
+  
+  npcs.forEach(npc => npc.draw(ctx, tickCount));
+  mobs.forEach(mob => mob.draw(ctx, tickCount));
   projectiles.forEach(p => p.draw(ctx));
+  
+  particles.forEach(pt => {
+    ctx.fillStyle = pt.color;
+    ctx.fillRect(pt.x, pt.y, pt.size, pt.size);
+  });
+  
+  damageNumbers.forEach(d => {
+    ctx.fillStyle = d.color;
+    ctx.font = "bold 14px sans-serif";
+    ctx.fillText(d.amount, d.x, d.y);
+  });
 
   drawDetailedSprite(ctx, player.x, player.y, "player", player.facing, player.animFrame, player.isAttacking);
-
-  particles.forEach(pt => {
-    ctx.fillStyle = pt.color; ctx.beginPath(); ctx.arc(pt.x, pt.y, pt.size, 0, Math.PI * 2); ctx.fill();
-  });
-
-  damageNumbers.forEach(d => {
-    ctx.fillStyle = d.color; ctx.font = "bold 13px sans-serif"; ctx.fillText(d.amount, d.x, d.y);
-  });
 }
 
-function loop() { update(); draw(); requestAnimationFrame(loop); }
-loop();
+function gameLoop() {
+  tickCount++;
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+updateUI();
+gameLoop();
 </script>
 </body>
 </html>

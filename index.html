@@ -2,18 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Story RPG Engine - Supremacy Edition</title>
+  <title>Story RPG Engine - Loot & Gear Edition</title>
   <style>
     html, body { 
-      margin: 0; 
-      padding: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden; /* Prevents browser scrollbars from appearing */
-      background: #0b0c10; 
-      color: #c5c6c7; 
-      font-family: 'Segoe UI', sans-serif; 
-      text-align: center; 
+      margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; 
+      background: #0b0c10; color: #c5c6c7; font-family: 'Segoe UI', sans-serif; text-align: center; 
     }
     #game-container { position: relative; width: 1000px; margin: 0 auto; }
     canvas { background: #1f2833; display: block; border: 4px solid #66fcf1; border-radius: 4px; image-rendering: pixelated; }
@@ -44,12 +37,22 @@
       align-items: center; color: #ff4d4d; font-size: 14px; font-weight: bold;
     }
 
-    #stat-window {
-      display: none; position: absolute; top: 50px; left: 50px; width: 260px;
+    /* Windows */
+    #stat-window, #inventory-window {
+      display: none; position: absolute; top: 50px; width: 280px;
       background: rgba(11, 12, 16, 0.95); border: 2px solid #66fcf1;
       border-radius: 8px; padding: 15px; text-align: left; font-size: 13px; z-index: 10;
     }
-    #stat-window h3 { margin: 0 0 10px 0; color: #66fcf1; }
+    #stat-window { left: 50px; }
+    #inventory-window { right: 50px; max-height: 300px; overflow-y: auto; }
+    #stat-window h3, #inventory-window h3 { margin: 0 0 10px 0; color: #66fcf1; }
+
+    .inv-item {
+      background: #1f2833; border: 1px solid #45a29e; padding: 6px 10px;
+      margin-bottom: 6px; border-radius: 4px; cursor: pointer; display: flex;
+      justify-content: space-between; align-items: center;
+    }
+    .inv-item:hover { border-color: #ffd700; }
 
     #dialogue-box {
       display: none; position: absolute; bottom: 70px; left: 50px; right: 50px;
@@ -72,6 +75,13 @@
       background: #66fcf1; border: none; padding: 6px 12px; font-weight: bold; cursor: pointer; border-radius: 4px; color: #0b0c10;
     }
     .shop-btn:hover, .class-btn:hover { background: #45a29e; color: #fff; }
+
+    /* Rarity Styles */
+    .rarity-Common { color: #b0bec5; }
+    .rarity-Uncommon { color: #55efc4; }
+    .rarity-Rare { color: #74b9ff; }
+    .rarity-Epic { color: #a29bfe; }
+    .rarity-Legendary { color: #ffeaa7; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -99,7 +109,14 @@
       <div>INT: <span id="st-int">5</span> | VIT: <span id="st-vit">5</span></div>
       <div>ATK: <span id="st-atk">12</span> | DEF: <span id="st-def">2</span></div>
       <hr style="border-color: #45a29e;">
-      <div>Passive: <span id="st-passive" class="stat-highlight">None</span></div>
+      <div>Weapon: <span id="eq-weapon" class="stat-highlight">None</span></div>
+      <div>Armor: <span id="eq-armor" class="stat-highlight">None</span></div>
+      <div>Accessory: <span id="eq-acc" class="stat-highlight">None</span></div>
+    </div>
+
+    <div id="inventory-window">
+      <h3>Inventory [I]</h3>
+      <div id="inventory-list"></div>
     </div>
 
     <div id="dialogue-box">
@@ -125,6 +142,9 @@
 <script>
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
+
+const WORLD_WIDTH = 2500;
+let cameraX = 0;
 
 // Job System Trees
 const BASE_JOBS = {
@@ -159,24 +179,93 @@ function getSupremacyJobs(advancedJob) {
   return SUPREMACY_PREFIXES.map(p => `${p} ${advancedJob}`);
 }
 
-let currentZone = 0; // 0: Town, 1: Swamp, 2: Caverns, 3: Dragon's Peak
+let currentZone = 0; 
 
 const ZONES = [
-  { name: "Oakhaven Town", questReq: "Talk to Elder Eldrin", questState: "NOT_STARTED" },
-  { name: "Whispering Swamp", questReq: "Defeat 3 Slimes", kills: 0, target: 3 },
-  { name: "Ashen Caverns", questReq: "Defeat 3 Skeletons", kills: 0, target: 3 },
-  { name: "Dragon's Peak", questReq: "Defeat the VOID TITAN", kills: 0, target: 1 }
+  { name: "Oakhaven Town", questReq: "Talk to Elder Eldrin", reqJobTier: 0, questState: "NOT_STARTED" },
+  { name: "Whispering Swamp", questReq: "Reach Lv10 & Pick Base Job, then Defeat 8 Slimes", kills: 0, target: 8, reqJobTier: 1, questState: "NOT_STARTED" },
+  { name: "Ashen Caverns", questReq: "Reach Lv25 & Pick Advanced Job, then Defeat 10 Skeletons", kills: 0, target: 10, reqJobTier: 2, questState: "NOT_STARTED" },
+  { name: "Dragon's Peak", questReq: "Reach Lv40 & Pick Supremacy Job, then Defeat 3 VOID TITANS", kills: 0, target: 3, reqJobTier: 3, questState: "NOT_STARTED" }
 ];
+
+// Blacksmith Drop Quest System
+const smithQuest = {
+  active: false,
+  completed: false,
+  itemNeeded: "Crushed Goblin Iron",
+  amountNeeded: 5,
+  currentAmount: 0
+};
 
 const player = {
   x: 100, y: 220, width: 32, height: 40, speed: 3.5,
   hp: 100, maxHp: 100, level: 1, xp: 0, xpToNext: 50, maxLevel: 50,
-  gold: 0, job: "Novice", baseJob: "", advancedJob: "",
+  gold: 0, job: "Novice", jobTier: 0, baseJob: "", advancedJob: "",
   str: 5, dex: 5, int: 5, vit: 5, atk: 12, def: 2, passive: "None",
   isAttacking: false, attackCooldown: 0, attackTimer: 0, attackBox: { x: 0, y: 0, w: 36, h: 40 },
   facing: "right", walking: false, animFrame: 0, animTimer: 0,
-  cooldowns: { Q: 0, W: 0, E: 0, R: 0 }, maxCooldowns: { Q: 120, W: 240, E: 360, R: 720 }
+  cooldowns: { Q: 0, W: 0, E: 0, R: 0 }, maxCooldowns: { Q: 120, W: 240, E: 360, R: 720 },
+  inventory: [],
+  equipment: { Weapon: null, Armor: null, Accessory: null }
 };
+
+const RARITIES = [
+  { name: "Common", chance: 0.60, mult: 1.0 },
+  { name: "Uncommon", chance: 0.25, mult: 1.3 },
+  { name: "Rare", chance: 0.10, mult: 1.7 },
+  { name: "Epic", chance: 0.04, mult: 2.2 },
+  { name: "Legendary", chance: 0.01, mult: 3.0 }
+];
+
+const ITEM_TYPES = ["Weapon", "Armor", "Accessory"];
+
+function generateLootDrop(mobLevel) {
+  const roll = Math.random();
+  let cumulative = 0;
+  let selectedRarity = RARITIES[0];
+  for (let r of RARITIES) {
+    cumulative += r.chance;
+    if (roll <= cumulative) { selectedRarity = r; break; }
+  }
+
+  const itemType = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
+  const itemLevel = Math.max(1, mobLevel + Math.floor(Math.random() * 3) - 1);
+  const baseStat = Math.floor((itemLevel * 3 + 5) * selectedRarity.mult);
+
+  let name = `${selectedRarity.name} Lv.${itemLevel} ${itemType}`;
+  return {
+    id: Math.random(),
+    name,
+    type: itemType,
+    level: itemLevel,
+    rarity: selectedRarity.name,
+    stat: baseStat
+  };
+}
+
+function equipItem(item) {
+  if (player.equipment[item.type]) {
+    player.inventory.push(player.equipment[item.type]); // Unequip current
+  }
+  player.equipment[item.type] = item;
+  player.inventory = player.inventory.filter(i => i.id !== item.id);
+  recalculateStats();
+  updateInventoryUI();
+  updateUI();
+}
+
+function recalculateStats() {
+  let bonusAtk = 0;
+  let bonusDef = 0;
+  let bonusHp = 0;
+
+  if (player.equipment.Weapon) bonusAtk += player.equipment.Weapon.stat;
+  if (player.equipment.Armor) bonusDef += player.equipment.Armor.stat;
+  if (player.equipment.Accessory) bonusHp += player.equipment.Accessory.stat * 5;
+
+  player.atk = (player.str * 2 + player.dex) + bonusAtk;
+  player.def = Math.floor(player.vit / 2) + bonusDef;
+}
 
 const projectiles = [];
 const damageNumbers = [];
@@ -184,7 +273,6 @@ const particles = [];
 
 const keys = {};
 window.addEventListener("keydown", e => {
-  // Prevent browser window from scrolling when pressing controls
   if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Space"].includes(e.key)) {
     e.preventDefault();
   }
@@ -194,13 +282,14 @@ window.addEventListener("keydown", e => {
   if (e.key === "j" || e.key === "J") handleMeleeAttack();
   if (e.key === "k" || e.key === "K") handleRangedAttack();
   if (e.key === "c" || e.key === "C") toggleStatWindow();
+  if (e.key === "i" || e.key === "I") toggleInventoryWindow();
   if (["q","w","e","r"].includes(e.key.toLowerCase())) useSkill(e.key.toUpperCase());
   if (e.key === "Escape") closeShop();
 });
 window.addEventListener("keyup", e => keys[e.key] = false);
 
 function spawnDamageNumber(x, y, amount, color = "#ff4d4d") {
-  damageNumbers.push({ x, y, amount: Math.floor(amount), color, life: 40 });
+  damageNumbers.push({ x, y, amount: typeof amount === 'number' ? Math.floor(amount) : amount, color, life: 40 });
 }
 
 function spawnSparkParticles(x, y, color = "#ffd700", count = 6) {
@@ -224,7 +313,7 @@ class Projectile {
     if (this.zone !== currentZone) { this.alive = false; return; }
     this.x += this.vx; this.y += this.vy;
     particles.push({ x: this.x, y: this.y, vx: (Math.random()-0.5), vy: (Math.random()-0.5), color: this.color, life: 8, size: 2 });
-    if (this.x < 0 || this.x > 1000 || this.y < 0 || this.y > 400) this.alive = false;
+    if (this.x < 0 || this.x > WORLD_WIDTH || this.y < 0 || this.y > 400) this.alive = false;
 
     if (this.isEnemy) {
       const dist = Math.hypot((player.x + 16) - this.x, (player.y + 20) - this.y);
@@ -248,8 +337,8 @@ class Projectile {
     }
   }
   draw(ctx) {
-    ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x, this.y, 6, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(this.x, this.y, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = this.color; ctx.beginPath(); ctx.arc(this.x - cameraX, this.y, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(this.x - cameraX, this.y, 3, 0, Math.PI * 2); ctx.fill();
   }
 }
 
@@ -259,7 +348,8 @@ function addXP(amount) {
   while (player.xp >= player.xpToNext && player.level < player.maxLevel) {
     player.xp -= player.xpToNext; player.level++;
     player.xpToNext = Math.floor(50 * Math.pow(1.3, player.level - 1));
-    player.maxHp += 15 + player.vit; player.hp = player.maxHp; player.atk += 3;
+    player.maxHp += 15 + player.vit; player.hp = player.maxHp; 
+    recalculateStats();
 
     if (player.level === 10) promptBasicJobSelection();
     if (player.level === 25 && player.baseJob) promptAdvancedJobSelection();
@@ -307,18 +397,18 @@ function promptSupremacyJobSelection() {
 
 function selectJob(jobName, tier) {
   if (tier === "base") {
-    player.baseJob = jobName; player.job = jobName;
+    player.baseJob = jobName; player.job = jobName; player.jobTier = 1;
     const stats = BASE_JOBS[jobName];
     player.str = stats.str; player.dex = stats.dex; player.int = stats.int; player.vit = stats.vit; player.passive = stats.passive;
   } else if (tier === "advanced") {
-    player.advancedJob = jobName; player.job = jobName;
+    player.advancedJob = jobName; player.job = jobName; player.jobTier = 2;
     player.str += 12; player.dex += 12; player.int += 12; player.vit += 12;
   } else if (tier === "supremacy") {
-    player.job = jobName;
+    player.job = jobName; player.jobTier = 3;
     player.str += 25; player.dex += 25; player.int += 25; player.vit += 25;
     player.passive = `Supremacy Aura: ${jobName}`;
   }
-  player.atk = player.str * 2 + player.dex; player.def = Math.floor(player.vit / 2);
+  recalculateStats();
   document.getElementById("class-select-box").style.display = "none"; updateUI();
 }
 
@@ -365,15 +455,16 @@ function handleRangedAttack() {
 }
 
 function drawHouse(ctx, x, y, wallColor, roofColor) {
-  ctx.fillStyle = wallColor; ctx.fillRect(x, y + 30, 80, 50);
-  ctx.fillStyle = "#2b2d42"; ctx.fillRect(x + 30, y + 50, 20, 30);
+  const sx = x - cameraX;
+  ctx.fillStyle = wallColor; ctx.fillRect(sx, y + 30, 80, 50);
+  ctx.fillStyle = "#2b2d42"; ctx.fillRect(sx + 30, y + 50, 20, 30);
   ctx.fillStyle = roofColor;
-  ctx.beginPath(); ctx.moveTo(x - 10, y + 30); ctx.lineTo(x + 40, y); ctx.lineTo(x + 90, y + 30); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(sx - 10, y + 30); ctx.lineTo(sx + 40, y); ctx.lineTo(sx + 90, y + 30); ctx.fill();
 }
 
 function drawDetailedSprite(ctx, x, y, type, facing = "right", animFrame = 0, isAttacking = false) {
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(x - cameraX, y);
 
   if (type === "player") {
     const legOffset = (animFrame % 2 === 0) ? 0 : 3;
@@ -464,32 +555,79 @@ class NPC {
     if (this.zone !== currentZone) return;
     drawDetailedSprite(ctx, this.x, this.y, this.spriteType, "right", tick);
     ctx.fillStyle = "#66fcf1"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText(this.name, this.x + 16, this.y - 8);
+    ctx.fillText(this.name, this.x + 16 - cameraX, this.y - 8);
   }
 }
 
 const npcs = [
   new NPC("Elder Eldrin", "elder", 0, 180, 200, () => {
-    if (ZONES[0].questState === "NOT_STARTED") return ["Defeat 3 Slimes in Whispering Swamp to clear the land!"];
-    else return ["The portal to Whispering Swamp is open! Go forth!"];
+    if (ZONES[0].questState === "NOT_STARTED") return ["Defeat 8 Slimes in Whispering Swamp to clear the land!"];
+    if (ZONES[1].questState === "READY_TO_TURN_IN") return ["Great job defeating the Slimes! The path to Ashen Caverns is now open!"];
+    if (ZONES[2].questState === "READY_TO_TURN_IN") return ["You cleared the Skeletons! Dragon's Peak awaits!"];
+    if (ZONES[3].questState === "READY_TO_TURN_IN") return ["You defeated the VOID TITANS! You are the ultimate hero!"];
+    return ["Proceed through the portal to continue your quest!"];
   }, () => { 
     if (ZONES[0].questState === "NOT_STARTED") {
       ZONES[0].questState = "COMPLETED";
+      ZONES[1].questState = "IN_PROGRESS";
       updateUI();
-    } 
+    } else if (ZONES[1].questState === "READY_TO_TURN_IN") {
+      ZONES[1].questState = "COMPLETED";
+      ZONES[2].questState = "IN_PROGRESS";
+      updateUI();
+    } else if (ZONES[2].questState === "READY_TO_TURN_IN") {
+      ZONES[2].questState = "COMPLETED";
+      ZONES[3].questState = "IN_PROGRESS";
+      updateUI();
+    } else if (ZONES[3].questState === "READY_TO_TURN_IN") {
+      ZONES[3].questState = "COMPLETED";
+      updateUI();
+    }
   }),
-  new NPC("Blacksmith Bruno", "smith", 0, 320, 260, () => ["Need upgrades for your journey?"], () => openShop())
+  new NPC("Blacksmith Bruno", "smith", 0, 320, 260, () => {
+    if (!smithQuest.active && !smithQuest.completed) {
+      smithQuest.active = true;
+      return ["Greetings warrior! Bring me 5x Crushed Goblin Iron from the Swamp slimes, and I will forge you an Epic Weapon!"];
+    } else if (smithQuest.active && !smithQuest.completed) {
+      if (smithQuest.currentAmount >= smithQuest.amountNeeded) {
+        return ["Outstanding! Here is your reward!"];
+      } else {
+        return [`I still need ${smithQuest.amountNeeded - smithQuest.currentAmount} more Crushed Goblin Iron!`];
+      }
+    }
+    return ["Need upgrades for your journey? Check out my shop!"];
+  }, () => {
+    if (smithQuest.active && !smithQuest.completed && smithQuest.currentAmount >= smithQuest.amountNeeded) {
+      smithQuest.completed = true;
+      player.gold += 150;
+      const epicReward = { id: Math.random(), name: "Epic Forge Hammer", type: "Weapon", level: 10, rarity: "Epic", stat: 35 };
+      player.inventory.push(epicReward);
+      spawnDamageNumber(player.x + 16, player.y, "QUEST COMPLETE! +150G +EPIC WEAPON", "#ffd700");
+      updateInventoryUI();
+      updateUI();
+    } else {
+      openShop();
+    }
+  })
 ];
 
 class RespawningMob {
-  constructor(name, spriteType, zone, minX, maxX, y, maxHp, atk, xpYield, goldYield, isRanged = false, isBoss = false) {
+  constructor(name, spriteType, zone, minX, maxX, y, maxHp, atk, xpYield, goldYield, isRanged = false, isBoss = false, level = 1) {
     this.name = name; this.spriteType = spriteType; this.zone = zone;
     this.minX = minX; this.maxX = maxX;
     this.x = minX + Math.random() * (maxX - minX - 40); this.y = y;
     this.width = isBoss ? 48 : 32; this.height = isBoss ? 48 : 40;
-    this.maxHp = maxHp; this.hp = maxHp; this.atk = atk; this.xpYield = xpYield; this.goldYield = goldYield;
+    this.level = level;
+    
+    const distFactor = 1 + (this.x / WORLD_WIDTH);
+    this.maxHp = Math.floor(maxHp * distFactor); 
+    this.hp = this.maxHp; 
+    this.atk = Math.floor(atk * distFactor); 
+    this.xpYield = Math.floor(xpYield * distFactor); 
+    this.goldYield = Math.floor(goldYield * distFactor);
+    
     this.isRanged = isRanged; this.isBoss = isBoss; this.alive = true; this.vx = 1.2; this.respawnTimer = 0; this.shootTimer = 0;
-    this.animFrame = 0;
+    this.animFrame = 0; this.aggroRange = 300; this.facing = "right";
   }
   update() {
     if (this.zone !== currentZone) return; 
@@ -498,31 +636,64 @@ class RespawningMob {
       return;
     }
     this.animFrame++;
-    this.x += this.vx;
-    if (this.x <= this.minX || this.x >= this.maxX - this.width) this.vx *= -1;
 
-    if (this.isRanged && ++this.shootTimer > 110) {
+    const px = player.x + player.width / 2;
+    const py = player.y + player.height / 2;
+    const mx = this.x + this.width / 2;
+    const my = this.y + this.height / 2;
+    const distToPlayer = Math.hypot(px - mx, py - my);
+
+    if (distToPlayer < this.aggroRange) {
+      const dx = px - mx;
+      const dy = py - my;
+      const moveSpeed = this.isBoss ? 1.2 : 1.8;
+      this.x += (dx / distToPlayer) * moveSpeed;
+      this.y += (dy / distToPlayer) * moveSpeed;
+      this.facing = dx >= 0 ? "right" : "left";
+    } else {
+      this.x += this.vx;
+      if (this.x <= this.minX || this.x >= this.maxX - this.width) this.vx *= -1;
+      this.facing = this.vx > 0 ? "right" : "left";
+    }
+
+    if (this.isRanged && ++this.shootTimer > 90) {
       this.shootTimer = 0;
-      const dir = player.x < this.x ? -4 : 4;
+      const dir = player.x < this.x ? -5 : 5;
       projectiles.push(new Projectile(this.x + 16, this.y + 16, dir, 0, true, this.atk, "#ff0055", this.zone));
     }
 
-    const dist = Math.hypot((player.x + 16) - (this.x + this.width / 2), (player.y + 20) - (this.y + this.height / 2));
-    if (dist < 24) { player.hp = Math.max(0, player.hp - (this.atk * 0.03)); updateUI(); }
+    if (distToPlayer < 24) { 
+      player.hp = Math.max(0, player.hp - (this.atk * 0.04)); 
+      updateUI(); 
+    }
   }
   takeDamage(amount) {
     if (!this.alive) return;
     this.hp -= amount;
     spawnDamageNumber(this.x + 16, this.y, amount);
     if (this.hp <= 0) {
-      this.alive = false; this.respawnTimer = 240;
+      this.alive = false; this.respawnTimer = 200;
       addXP(this.xpYield); player.gold += this.goldYield;
       
+      // Roll for Equipment Loot Drop (40% Chance)
+      if (Math.random() < 0.40) {
+        const gearDrop = generateLootDrop(this.level);
+        player.inventory.push(gearDrop);
+        spawnDamageNumber(this.x + 16, this.y - 10, `Loot: ${gearDrop.name}!`, "#66fcf1");
+        updateInventoryUI();
+      }
+
+      // Roll for Blacksmith Quest Item Drop (30% Chance)
+      if (smithQuest.active && !smithQuest.completed && this.zone === 1 && Math.random() < 0.30) {
+        smithQuest.currentAmount++;
+        spawnDamageNumber(this.x + 16, this.y - 20, `Quest Item (+1 Goblin Iron)`, "#ffd700");
+      }
+
       const z = ZONES[this.zone];
-      if (z && z.kills !== undefined && z.kills < z.target) {
+      if (z && z.kills !== undefined && z.questState === "IN_PROGRESS" && player.jobTier >= z.reqJobTier && z.kills < z.target) {
         z.kills++;
         if (z.kills >= z.target) {
-          z.questState = "COMPLETED";
+          z.questState = "READY_TO_TURN_IN";
         }
       }
       updateUI();
@@ -530,28 +701,31 @@ class RespawningMob {
   }
   draw(ctx, tick) {
     if (this.zone !== currentZone || !this.alive) return;
-    const facing = this.vx > 0 ? "right" : "left";
-    drawDetailedSprite(ctx, this.x, this.y, this.spriteType, facing, this.animFrame);
-    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(this.x, this.y - 12, this.width, 4);
-    ctx.fillStyle = "#e63946"; ctx.fillRect(this.x, this.y - 12, (this.hp / this.maxHp) * this.width, 4);
+    drawDetailedSprite(ctx, this.x, this.y, this.spriteType, this.facing, this.animFrame);
+    
+    const sx = this.x - cameraX;
+    ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(sx, this.y - 12, this.width, 4);
+    ctx.fillStyle = "#e63946"; ctx.fillRect(sx, this.y - 12, (this.hp / this.maxHp) * this.width, 4);
+    
+    ctx.fillStyle = "#ffd700"; ctx.font = "9px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText(`Lv.${this.level}`, sx + this.width / 2, this.y - 15);
   }
 }
 
 const mobs = [
-  // Zone 1 (Swamp)
-  new RespawningMob("Swamp Slime", "slime", 1, 100, 850, 150, 40, 6, 20, 15),
-  new RespawningMob("Swamp Slime", "slime", 1, 100, 850, 220, 40, 6, 20, 15),
-  new RespawningMob("Swamp Slime", "slime", 1, 100, 850, 290, 40, 6, 20, 15),
-  new RespawningMob("Swamp Slime", "slime", 1, 100, 850, 340, 40, 6, 20, 15),
+  new RespawningMob("Swamp Slime", "slime", 1, 200, 600, 150, 70, 10, 25, 20, false, false, 3),
+  new RespawningMob("Swamp Slime", "slime", 1, 600, 1000, 220, 110, 14, 35, 25, false, false, 5),
+  new RespawningMob("Swamp Slime", "slime", 1, 1000, 1500, 290, 150, 18, 50, 35, false, false, 8),
+  new RespawningMob("Elder Slime", "slime", 1, 1500, 2200, 200, 220, 24, 80, 50, false, false, 12),
 
-  // Zone 2 (Caverns)
-  new RespawningMob("Cave Skeleton", "skeleton", 2, 100, 850, 160, 80, 12, 45, 30),
-  new RespawningMob("Cave Skeleton", "skeleton", 2, 100, 850, 240, 80, 12, 45, 30),
-  new RespawningMob("Cave Skeleton", "skeleton", 2, 100, 850, 320, 80, 12, 45, 30),
-  new RespawningMob("Cave Drake", "drake", 2, 100, 850, 200, 110, 16, 60, 45, true),
+  new RespawningMob("Cave Skeleton", "skeleton", 2, 200, 800, 160, 180, 22, 90, 50, false, false, 15),
+  new RespawningMob("Cave Skeleton", "skeleton", 2, 800, 1400, 240, 240, 28, 120, 65, false, false, 18),
+  new RespawningMob("Armored Skeleton", "skeleton", 2, 1400, 2000, 320, 320, 35, 160, 85, false, false, 22),
+  new RespawningMob("Cave Drake", "drake", 2, 1000, 2200, 200, 400, 42, 220, 120, true, false, 25),
 
-  // Zone 3 (Dragon's Peak)
-  new RespawningMob("VOID TITAN (BOSS)", "boss", 3, 400, 800, 180, 450, 28, 350, 300, true, true)
+  new RespawningMob("VOID TITAN (BOSS)", "boss", 3, 500, 1000, 180, 850, 55, 500, 350, true, true, 35),
+  new RespawningMob("VOID TITAN (BOSS)", "boss", 3, 1100, 1600, 220, 1100, 68, 650, 450, true, true, 40),
+  new RespawningMob("VOID TITAN (BOSS)", "boss", 3, 1700, 2300, 180, 1400, 82, 850, 600, true, true, 45)
 ];
 
 const dialogueUI = { box: document.getElementById("dialogue-box"), name: document.getElementById("dialogue-name"), text: document.getElementById("dialogue-text"), active: false, currentNPC: null };
@@ -571,17 +745,39 @@ function handleInteract() {
 function openShop() { document.getElementById("shop-box").style.display = "block"; }
 function closeShop() { document.getElementById("shop-box").style.display = "none"; }
 function toggleStatWindow() { const win = document.getElementById("stat-window"); win.style.display = win.style.display === "block" ? "none" : "block"; updateStatWindow(); }
+function toggleInventoryWindow() { const win = document.getElementById("inventory-window"); win.style.display = win.style.display === "block" ? "none" : "block"; updateInventoryUI(); }
+
 function updateStatWindow() {
   document.getElementById("st-job").innerText = player.job; document.getElementById("st-str").innerText = player.str;
   document.getElementById("st-dex").innerText = player.dex; document.getElementById("st-int").innerText = player.int;
   document.getElementById("st-vit").innerText = player.vit; document.getElementById("st-atk").innerText = player.atk;
-  document.getElementById("st-def").innerText = player.def; document.getElementById("st-passive").innerText = player.passive;
+  document.getElementById("st-def").innerText = player.def;
+  document.getElementById("eq-weapon").innerText = player.equipment.Weapon ? player.equipment.Weapon.name : "None";
+  document.getElementById("eq-armor").innerText = player.equipment.Armor ? player.equipment.Armor.name : "None";
+  document.getElementById("eq-acc").innerText = player.equipment.Accessory ? player.equipment.Accessory.name : "None";
 }
+
+function updateInventoryUI() {
+  const list = document.getElementById("inventory-list");
+  list.innerHTML = "";
+  if (player.inventory.length === 0) {
+    list.innerHTML = `<div style="color:#888;">Inventory Empty</div>`;
+    return;
+  }
+  player.inventory.forEach(item => {
+    const div = document.createElement("div");
+    div.className = "inv-item";
+    div.innerHTML = `<span class="rarity-${item.rarity}">${item.name} (+${item.stat})</span>`;
+    div.onclick = () => equipItem(item);
+    list.appendChild(div);
+  });
+}
+
 function buyItem(item, cost) {
   if (player.gold >= cost) {
     player.gold -= cost;
     if (item === "potion") player.hp = Math.min(player.maxHp, player.hp + 50);
-    if (item === "sword") player.atk += 8;
+    if (item === "sword") { player.atk += 8; }
     updateUI();
   } else alert("Not enough gold!");
 }
@@ -594,13 +790,21 @@ function updateUI() {
   document.getElementById("job-display").innerText = player.job;
   document.getElementById("zone-display").innerText = ZONES[currentZone].name;
 
-  const z = ZONES[currentZone];
-  if (z.questState === "COMPLETED") {
-    document.getElementById("quest-display").innerText = "Portal Unlocked!";
-  } else if (z.kills !== undefined) {
-    document.getElementById("quest-display").innerText = `Kills: ${z.kills}/${z.target}`;
+  const activeQuestZone = ZONES.find(z => z.questState === "READY_TO_TURN_IN" || z.questState === "IN_PROGRESS" || z.questState === "NOT_STARTED");
+  if (activeQuestZone) {
+    if (activeQuestZone.questState === "READY_TO_TURN_IN") {
+      document.getElementById("quest-display").innerText = "Return to Elder Eldrin in Town! (Use Return Portal)";
+    } else if (activeQuestZone.kills !== undefined && activeQuestZone.questState === "IN_PROGRESS") {
+      if (player.jobTier < activeQuestZone.reqJobTier) {
+        document.getElementById("quest-display").innerText = `Advance Job Class first! (Req Job Tier: ${activeQuestZone.reqJobTier})`;
+      } else {
+        document.getElementById("quest-display").innerText = `${activeQuestZone.name}: Kills ${activeQuestZone.kills}/${activeQuestZone.target}`;
+      }
+    } else {
+      document.getElementById("quest-display").innerText = activeQuestZone.questReq;
+    }
   } else {
-    document.getElementById("quest-display").innerText = z.questReq;
+    document.getElementById("quest-display").innerText = "All Quests Completed!";
   }
   updateStatWindow();
 }
@@ -622,9 +826,11 @@ function update() {
     if (player.animTimer % 8 === 0) player.animFrame++;
   } else { player.animFrame = 0; }
 
-  // Portal Interaction Check
+  cameraX = player.x - canvas.width / 2;
+  cameraX = Math.max(0, Math.min(WORLD_WIDTH - canvas.width, cameraX));
+
   const portalUnlocked = ZONES[currentZone].questState === "COMPLETED";
-  if (portalUnlocked && player.x > 930 && player.y > 150 && player.y < 250) {
+  if (portalUnlocked && player.x > 2400 && player.y > 150 && player.y < 250) {
     if (currentZone < ZONES.length - 1) {
       currentZone++;
       player.x = 50;
@@ -633,8 +839,15 @@ function update() {
     }
   }
 
-  // Prevents going off edges
-  player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
+  const questReadyToTurnIn = ZONES[currentZone].questState === "READY_TO_TURN_IN";
+  if (questReadyToTurnIn && player.x < 100 && player.y > 150 && player.y < 250) {
+    currentZone = 0;
+    player.x = 100;
+    player.y = 220;
+    updateUI();
+  }
+
+  player.x = Math.max(0, Math.min(WORLD_WIDTH - player.width, player.x));
   player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
 
   ["Q","W","E","R"].forEach(k => {
@@ -652,56 +865,59 @@ function update() {
 
 function drawEnvironment(ctx, zone) {
   if (zone === 0) {
-    // Village/Town graphics
-    ctx.fillStyle = "#3a5a40"; ctx.fillRect(0, 0, 1000, 400); // Grass
-    ctx.fillStyle = "#a3b18a"; ctx.fillRect(0, 180, 1000, 60); // Stone path
+    ctx.fillStyle = "#3a5a40"; ctx.fillRect(0, 0, WORLD_WIDTH, 400); 
+    ctx.fillStyle = "#a3b18a"; ctx.fillRect(0, 180, WORLD_WIDTH, 60); 
     
-    // Houses
     drawHouse(ctx, 60, 40, "#7f5539", "#b08968");
     drawHouse(ctx, 300, 30, "#582f0e", "#7f5539");
     drawHouse(ctx, 550, 40, "#3d0c02", "#9a8c98");
     drawHouse(ctx, 750, 240, "#582f0e", "#b08968");
   } else if (zone === 1) {
-    // Swamp terrain
-    ctx.fillStyle = "#1b4332"; ctx.fillRect(0, 0, 1000, 400);
-    // Muddy pools / water
+    ctx.fillStyle = "#1b4332"; ctx.fillRect(0, 0, WORLD_WIDTH, 400);
     ctx.fillStyle = "#2d6a4f";
-    ctx.beginPath(); ctx.ellipse(250, 120, 120, 60, 0, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.ellipse(700, 280, 180, 80, 0, 0, Math.PI*2); ctx.fill();
-    // Lily pads
-    ctx.fillStyle = "#52b788";
-    ctx.beginPath(); ctx.arc(220, 110, 12, 0, Math.PI*2); ctx.fill();
-    ctx.beginPath(); ctx.arc(720, 270, 16, 0, Math.PI*2); ctx.fill();
+    for(let i=0; i<8; i++) {
+      ctx.beginPath(); ctx.ellipse((i * 320) + 150 - cameraX, 120, 120, 60, 0, 0, Math.PI*2); ctx.fill();
+    }
   } else if (zone === 2) {
-    // Caverns
-    ctx.fillStyle = "#212529"; ctx.fillRect(0, 0, 1000, 400);
+    ctx.fillStyle = "#212529"; ctx.fillRect(0, 0, WORLD_WIDTH, 400);
     ctx.fillStyle = "#343a40";
-    // Rocks
-    for(let i=0; i<10; i++) {
-      ctx.fillRect((i*110)%950, (i*70)%330, 40, 30);
+    for(let i=0; i<20; i++) {
+      ctx.fillRect((i*130)%WORLD_WIDTH - cameraX, (i*70)%330, 50, 40);
     }
   } else if (zone === 3) {
-    // Volcanic / Dragon Peak
-    ctx.fillStyle = "#10002b"; ctx.fillRect(0, 0, 1000, 400);
-    // Lava streams
+    ctx.fillStyle = "#10002b"; ctx.fillRect(0, 0, WORLD_WIDTH, 400);
     ctx.fillStyle = "#d90429";
-    ctx.fillRect(0, 80, 1000, 30);
-    ctx.fillRect(0, 300, 1000, 40);
+    ctx.fillRect(0, 80, WORLD_WIDTH, 30);
+    ctx.fillRect(0, 300, WORLD_WIDTH, 40);
   }
 
-  // Draw Portal at Right Edge if Zone Quest Completed
   const portalUnlocked = ZONES[zone].questState === "COMPLETED";
   if (portalUnlocked && zone < ZONES.length - 1) {
     ctx.save();
     const portalGlow = Math.sin(Date.now() * 0.005) * 5;
     ctx.fillStyle = "#66fcf1";
     ctx.beginPath();
-    ctx.ellipse(960, 200, 20 + portalGlow, 50 + portalGlow, 0, 0, Math.PI * 2);
+    ctx.ellipse(2450 - cameraX, 200, 20 + portalGlow, 50 + portalGlow, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "#ffffff";
     ctx.font = "bold 12px sans-serif";
     ctx.textAlign = "center";
-    ctx.fillText("PORTAL", 960, 135);
+    ctx.fillText("NEXT ZONE", 2450 - cameraX, 135);
+    ctx.restore();
+  }
+
+  const questReadyToTurnIn = ZONES[zone].questState === "READY_TO_TURN_IN";
+  if (questReadyToTurnIn && zone > 0) {
+    ctx.save();
+    const portalGlow = Math.sin(Date.now() * 0.005) * 5;
+    ctx.fillStyle = "#ffd700";
+    ctx.beginPath();
+    ctx.ellipse(50 - cameraX, 200, 20 + portalGlow, 50 + portalGlow, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("TOWN PORTAL", 50 - cameraX, 135);
     ctx.restore();
   }
 }
@@ -718,13 +934,13 @@ function draw() {
   
   particles.forEach(pt => {
     ctx.fillStyle = pt.color;
-    ctx.fillRect(pt.x, pt.y, pt.size, pt.size);
+    ctx.fillRect(pt.x - cameraX, pt.y, pt.size, pt.size);
   });
   
   damageNumbers.forEach(d => {
     ctx.fillStyle = d.color;
-    ctx.font = "bold 14px sans-serif";
-    ctx.fillText(d.amount, d.x, d.y);
+    ctx.font = "bold 12px sans-serif";
+    ctx.fillText(d.amount, d.x - cameraX, d.y);
   });
 
   drawDetailedSprite(ctx, player.x, player.y, "player", player.facing, player.animFrame, player.isAttacking);

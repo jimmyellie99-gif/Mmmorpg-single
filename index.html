@@ -4,15 +4,25 @@
   <meta charset="UTF-8">
   <title>Story RPG Engine - Supremacy Edition</title>
   <style>
-    body { margin: 0; background: #0b0c10; color: #c5c6c7; font-family: 'Segoe UI', sans-serif; text-align: center; }
-    #game-container { position: relative; width: 1000px; margin: 15px auto; }
+    html, body { 
+      margin: 0; 
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden; /* Prevents browser scrollbars from appearing */
+      background: #0b0c10; 
+      color: #c5c6c7; 
+      font-family: 'Segoe UI', sans-serif; 
+      text-align: center; 
+    }
+    #game-container { position: relative; width: 1000px; margin: 0 auto; }
     canvas { background: #1f2833; display: block; border: 4px solid #66fcf1; border-radius: 4px; image-rendering: pixelated; }
     
     #ui-bar {
       position: absolute; top: 10px; left: 10px; right: 10px;
       display: flex; justify-content: space-between; align-items: center;
       background: rgba(11, 12, 16, 0.85); padding: 8px 16px; border-radius: 6px;
-      font-size: 13px; border: 1px solid #45a29e; pointer-events: none;
+      font-size: 13px; border: 1px solid #45a29e; pointer-events: none; z-index: 5;
     }
     .stat-highlight { color: #66fcf1; font-weight: bold; }
     .gold-highlight { color: #ffd700; font-weight: bold; }
@@ -21,7 +31,7 @@
     #skill-bar {
       position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
       display: flex; gap: 10px; background: rgba(11, 12, 16, 0.85);
-      padding: 6px 12px; border-radius: 8px; border: 1px solid #45a29e;
+      padding: 6px 12px; border-radius: 8px; border: 1px solid #45a29e; z-index: 5;
     }
     .skill-slot {
       width: 44px; height: 44px; background: #1f2833; border: 2px solid #66fcf1;
@@ -37,14 +47,14 @@
     #stat-window {
       display: none; position: absolute; top: 50px; left: 50px; width: 260px;
       background: rgba(11, 12, 16, 0.95); border: 2px solid #66fcf1;
-      border-radius: 8px; padding: 15px; text-align: left; font-size: 13px;
+      border-radius: 8px; padding: 15px; text-align: left; font-size: 13px; z-index: 10;
     }
     #stat-window h3 { margin: 0 0 10px 0; color: #66fcf1; }
 
     #dialogue-box {
       display: none; position: absolute; bottom: 70px; left: 50px; right: 50px;
       background: rgba(11, 12, 16, 0.95); border: 2px solid #66fcf1;
-      border-radius: 8px; padding: 15px; text-align: left;
+      border-radius: 8px; padding: 15px; text-align: left; z-index: 10;
     }
     #dialogue-name { font-weight: bold; color: #66fcf1; font-size: 15px; margin-bottom: 6px; }
     #dialogue-text { color: #edf2f4; font-size: 14px; line-height: 1.5; min-height: 42px; }
@@ -52,7 +62,7 @@
     #shop-box, #class-select-box {
       display: none; position: absolute; top: 40px; left: 200px; right: 200px;
       background: rgba(11, 12, 16, 0.95); border: 2px solid #ffd700;
-      border-radius: 8px; padding: 20px; text-align: left; max-height: 320px; overflow-y: auto;
+      border-radius: 8px; padding: 20px; text-align: left; max-height: 320px; overflow-y: auto; z-index: 10;
     }
     .shop-item, .class-btn {
       display: flex; justify-content: space-between; align-items: center;
@@ -116,7 +126,7 @@
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Expanded Job System Tree (Base -> 5 Advanced -> 5 Supremacy per Advanced)
+// Job System Trees
 const BASE_JOBS = {
   "Warrior": { str: 15, dex: 8, int: 4, vit: 14, passive: "Rage: Attack scaling" },
   "Rogue": { str: 8, dex: 18, int: 6, vit: 8, passive: "Swiftness: Move speed" },
@@ -149,10 +159,19 @@ function getSupremacyJobs(advancedJob) {
   return SUPREMACY_PREFIXES.map(p => `${p} ${advancedJob}`);
 }
 
+let currentZone = 0; // 0: Town, 1: Swamp, 2: Caverns, 3: Dragon's Peak
+
+const ZONES = [
+  { name: "Oakhaven Town", questReq: "Talk to Elder Eldrin", questState: "NOT_STARTED" },
+  { name: "Whispering Swamp", questReq: "Defeat 3 Slimes", kills: 0, target: 3 },
+  { name: "Ashen Caverns", questReq: "Defeat 3 Skeletons", kills: 0, target: 3 },
+  { name: "Dragon's Peak", questReq: "Defeat the VOID TITAN", kills: 0, target: 1 }
+];
+
 const player = {
-  x: 100, y: 180, width: 32, height: 40, speed: 3.5,
+  x: 100, y: 220, width: 32, height: 40, speed: 3.5,
   hp: 100, maxHp: 100, level: 1, xp: 0, xpToNext: 50, maxLevel: 50,
-  gold: 0, job: "Novice", baseJob: "", advancedJob: "", questState: "NOT_STARTED", slimesKilled: 0,
+  gold: 0, job: "Novice", baseJob: "", advancedJob: "",
   str: 5, dex: 5, int: 5, vit: 5, atk: 12, def: 2, passive: "None",
   isAttacking: false, attackCooldown: 0, attackTimer: 0, attackBox: { x: 0, y: 0, w: 36, h: 40 },
   facing: "right", walking: false, animFrame: 0, animTimer: 0,
@@ -165,6 +184,11 @@ const particles = [];
 
 const keys = {};
 window.addEventListener("keydown", e => {
+  // Prevent browser window from scrolling when pressing controls
+  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " ", "Space"].includes(e.key)) {
+    e.preventDefault();
+  }
+
   keys[e.key] = true;
   if (e.key === " " || e.key === "e" || e.key === "E") handleInteract();
   if (e.key === "j" || e.key === "J") handleMeleeAttack();
@@ -191,11 +215,13 @@ function spawnSparkParticles(x, y, color = "#ffd700", count = 6) {
 }
 
 class Projectile {
-  constructor(x, y, vx, vy, isEnemy, damage, color = "#66fcf1") {
+  constructor(x, y, vx, vy, isEnemy, damage, color = "#66fcf1", zone = 0) {
     this.x = x; this.y = y; this.vx = vx; this.vy = vy;
     this.isEnemy = isEnemy; this.damage = damage; this.color = color; this.alive = true;
+    this.zone = zone;
   }
   update() {
+    if (this.zone !== currentZone) { this.alive = false; return; }
     this.x += this.vx; this.y += this.vy;
     particles.push({ x: this.x, y: this.y, vx: (Math.random()-0.5), vy: (Math.random()-0.5), color: this.color, life: 8, size: 2 });
     if (this.x < 0 || this.x > 1000 || this.y < 0 || this.y > 400) this.alive = false;
@@ -209,7 +235,7 @@ class Projectile {
         this.alive = false; updateUI();
       }
     } else {
-      mobs.forEach(m => {
+      mobs.filter(m => m.zone === currentZone).forEach(m => {
         if (m.alive) {
           const dist = Math.hypot((m.x + m.width / 2) - this.x, (m.y + m.height / 2) - this.y);
           if (dist < 20) {
@@ -307,7 +333,7 @@ function useSkill(key) {
 }
 
 function performAreaDamage(range, damage, particleColor) {
-  mobs.forEach(mob => {
+  mobs.filter(mob => mob.zone === currentZone).forEach(mob => {
     const dist = Math.hypot((player.x + 16) - (mob.x + mob.width / 2), (player.y + 20) - (mob.y + mob.height / 2));
     if (dist <= range && mob.alive) {
       mob.takeDamage(damage);
@@ -322,7 +348,7 @@ function handleMeleeAttack() {
   player.attackBox.x = player.facing === "right" ? player.x + player.width : player.x - player.attackBox.w;
   player.attackBox.y = player.y;
 
-  mobs.forEach(mob => {
+  mobs.filter(mob => mob.zone === currentZone).forEach(mob => {
     if (mob.alive && player.attackBox.x < mob.x + mob.width && player.attackBox.x + player.attackBox.w > mob.x &&
         player.attackBox.y < mob.y + mob.height && player.attackBox.y + player.attackBox.h > mob.y) {
       mob.takeDamage(player.atk);
@@ -335,7 +361,7 @@ function handleRangedAttack() {
   if (player.attackCooldown > 0) return;
   player.attackCooldown = 25; player.isAttacking = true; player.attackTimer = 10;
   const speed = player.facing === "right" ? 7 : -7;
-  projectiles.push(new Projectile(player.x + 16, player.y + 20, speed, 0, false, player.atk * 0.8));
+  projectiles.push(new Projectile(player.x + 16, player.y + 20, speed, 0, false, player.atk * 0.8, "#66fcf1", currentZone));
 }
 
 function drawDetailedSprite(ctx, x, y, type, facing = "right", animFrame = 0, isAttacking = false) {
@@ -385,8 +411,8 @@ function drawDetailedSprite(ctx, x, y, type, facing = "right", animFrame = 0, is
   else if (type === "slime") {
     const pulse = Math.sin(animFrame * 0.2) * 2;
     ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(16, 28, 14, 4, 0, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = "#4895ef"; ctx.beginPath(); ctx.ellipse(16, 20 + pulse/2, 14 + pulse, 10 - pulse, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = "#4cc9f0"; ctx.beginPath(); ctx.ellipse(14, 16 + pulse/2, 10, 6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#2a9d8f"; ctx.beginPath(); ctx.ellipse(16, 20 + pulse/2, 14 + pulse, 10 - pulse, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#e9c46a"; ctx.beginPath(); ctx.ellipse(14, 16 + pulse/2, 10, 6, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = "#ffffff"; ctx.fillRect(10, 16, 3, 4); ctx.fillRect(18, 16, 3, 4);
     ctx.fillStyle = "#000000"; ctx.fillRect(11, 17, 2, 2); ctx.fillRect(19, 17, 2, 2);
   }
@@ -423,11 +449,12 @@ function drawDetailedSprite(ctx, x, y, type, facing = "right", animFrame = 0, is
 }
 
 class NPC {
-  constructor(name, spriteType, x, y, getDialogue, onComplete) {
-    this.name = name; this.spriteType = spriteType; this.x = x; this.y = y;
+  constructor(name, spriteType, zone, x, y, getDialogue, onComplete) {
+    this.name = name; this.spriteType = spriteType; this.zone = zone; this.x = x; this.y = y;
     this.getDialogue = getDialogue; this.onComplete = onComplete;
   }
   draw(ctx, tick) {
+    if (this.zone !== currentZone) return;
     drawDetailedSprite(ctx, this.x, this.y, this.spriteType, "right", tick);
     ctx.fillStyle = "#66fcf1"; ctx.font = "bold 11px sans-serif"; ctx.textAlign = "center";
     ctx.fillText(this.name, this.x + 16, this.y - 8);
@@ -435,36 +462,42 @@ class NPC {
 }
 
 const npcs = [
-  new NPC("Elder Eldrin", "elder", 60, 180, () => {
-    if (player.questState === "NOT_STARTED") return ["Defeat 3 Forest Slimes in Zone 1 to unlock Zone 2!"];
-    else if (player.questState === "ACTIVE") return [`Slimes Defeated: ${player.slimesKilled} / 3`];
-    else return ["The path to Zone 2 is open! Proceed with caution."];
-  }, () => { if (player.questState === "NOT_STARTED") player.questState = "ACTIVE"; }),
-  new NPC("Blacksmith Bruno", "smith", 150, 260, () => ["Need upgrades?"], () => openShop())
+  new NPC("Elder Eldrin", "elder", 0, 180, 200, () => {
+    if (ZONES[0].questState === "NOT_STARTED") return ["Defeat 3 Slimes in Whispering Swamp to clear the land!"];
+    else return ["The portal to Whispering Swamp is open! Go forth!"];
+  }, () => { 
+    if (ZONES[0].questState === "NOT_STARTED") {
+      ZONES[0].questState = "COMPLETED";
+      updateUI();
+    } 
+  }),
+  new NPC("Blacksmith Bruno", "smith", 0, 320, 260, () => ["Need upgrades for your journey?"], () => openShop())
 ];
 
 class RespawningMob {
-  constructor(name, spriteType, zoneMinX, zoneMaxX, y, maxHp, atk, xpYield, goldYield, isRanged = false, isBoss = false) {
-    this.name = name; this.spriteType = spriteType; this.zoneMinX = zoneMinX; this.zoneMaxX = zoneMaxX;
-    this.x = zoneMinX + Math.random() * (zoneMaxX - zoneMinX - 40); this.y = y;
+  constructor(name, spriteType, zone, minX, maxX, y, maxHp, atk, xpYield, goldYield, isRanged = false, isBoss = false) {
+    this.name = name; this.spriteType = spriteType; this.zone = zone;
+    this.minX = minX; this.maxX = maxX;
+    this.x = minX + Math.random() * (maxX - minX - 40); this.y = y;
     this.width = isBoss ? 48 : 32; this.height = isBoss ? 48 : 40;
     this.maxHp = maxHp; this.hp = maxHp; this.atk = atk; this.xpYield = xpYield; this.goldYield = goldYield;
     this.isRanged = isRanged; this.isBoss = isBoss; this.alive = true; this.vx = 1.2; this.respawnTimer = 0; this.shootTimer = 0;
     this.animFrame = 0;
   }
   update() {
+    if (this.zone !== currentZone) return; 
     if (!this.alive) {
       if (--this.respawnTimer <= 0) { this.alive = true; this.hp = this.maxHp; }
       return;
     }
     this.animFrame++;
     this.x += this.vx;
-    if (this.x <= this.zoneMinX || this.x >= this.zoneMaxX - this.width) this.vx *= -1;
+    if (this.x <= this.minX || this.x >= this.maxX - this.width) this.vx *= -1;
 
-    if (this.isRanged && ++this.shootTimer > 120) {
+    if (this.isRanged && ++this.shootTimer > 110) {
       this.shootTimer = 0;
       const dir = player.x < this.x ? -4 : 4;
-      projectiles.push(new Projectile(this.x + 16, this.y + 16, dir, 0, true, this.atk, "#ff0055"));
+      projectiles.push(new Projectile(this.x + 16, this.y + 16, dir, 0, true, this.atk, "#ff0055", this.zone));
     }
 
     const dist = Math.hypot((player.x + 16) - (this.x + this.width / 2), (player.y + 20) - (this.y + this.height / 2));
@@ -477,20 +510,19 @@ class RespawningMob {
     if (this.hp <= 0) {
       this.alive = false; this.respawnTimer = 240;
       addXP(this.xpYield); player.gold += this.goldYield;
-      if (this.spriteType === "slime" && player.questState === "ACTIVE") {
-        player.slimesKilled++;
-        if (player.slimesKilled >= 3) {
-          player.questState = "COMPLETED";
-          document.getElementById("quest-display").innerText = "Completed!";
-        } else {
-          document.getElementById("quest-display").innerText = `Slimes: ${player.slimesKilled}/3`;
+      
+      const z = ZONES[this.zone];
+      if (z && z.kills !== undefined && z.kills < z.target) {
+        z.kills++;
+        if (z.kills >= z.target) {
+          z.questState = "COMPLETED";
         }
       }
       updateUI();
     }
   }
   draw(ctx, tick) {
-    if (!this.alive) return;
+    if (this.zone !== currentZone || !this.alive) return;
     const facing = this.vx > 0 ? "right" : "left";
     drawDetailedSprite(ctx, this.x, this.y, this.spriteType, facing, this.animFrame);
     ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(this.x, this.y - 12, this.width, 4);
@@ -499,11 +531,20 @@ class RespawningMob {
 }
 
 const mobs = [
-  new RespawningMob("Forest Slime", "slime", 230, 440, 180, 40, 6, 20, 15),
-  new RespawningMob("Forest Slime", "slime", 250, 440, 280, 40, 6, 20, 15),
-  new RespawningMob("Cave Skeleton", "skeleton", 460, 690, 160, 80, 12, 45, 30),
-  new RespawningMob("Cave Drake", "drake", 480, 690, 260, 110, 16, 60, 45, true),
-  new RespawningMob("VOID TITAN (BOSS)", "boss", 800, 960, 200, 400, 30, 300, 250, true, true)
+  // Zone 1 (Swamp)
+  new RespawningMob("Swamp Slime", "slime", 1, 100, 850, 150, 40, 6, 20, 15),
+  new RespawningMob("Swamp Slime", "slime", 1, 100, 850, 220, 40, 6, 20, 15),
+  new RespawningMob("Swamp Slime", "slime", 1, 100, 850, 290, 40, 6, 20, 15),
+  new RespawningMob("Swamp Slime", "slime", 1, 100, 850, 340, 40, 6, 20, 15),
+
+  // Zone 2 (Caverns)
+  new RespawningMob("Cave Skeleton", "skeleton", 2, 100, 850, 160, 80, 12, 45, 30),
+  new RespawningMob("Cave Skeleton", "skeleton", 2, 100, 850, 240, 80, 12, 45, 30),
+  new RespawningMob("Cave Skeleton", "skeleton", 2, 100, 850, 320, 80, 12, 45, 30),
+  new RespawningMob("Cave Drake", "drake", 2, 100, 850, 200, 110, 16, 60, 45, true),
+
+  // Zone 3 (Dragon's Peak)
+  new RespawningMob("VOID TITAN (BOSS)", "boss", 3, 400, 800, 180, 450, 28, 350, 300, true, true)
 ];
 
 const dialogueUI = { box: document.getElementById("dialogue-box"), name: document.getElementById("dialogue-name"), text: document.getElementById("dialogue-text"), active: false, currentNPC: null };
@@ -511,7 +552,7 @@ const dialogueUI = { box: document.getElementById("dialogue-box"), name: documen
 function handleInteract() {
   if (dialogueUI.active) { dialogueUI.active = false; dialogueUI.box.style.display = "none"; if (dialogueUI.currentNPC.onComplete) dialogueUI.currentNPC.onComplete(); }
   else {
-    npcs.forEach(npc => {
+    npcs.filter(npc => npc.zone === currentZone).forEach(npc => {
       if (Math.hypot((player.x + 16) - (npc.x + 16), (player.y + 20) - (npc.y + 20)) < 50) {
         dialogueUI.active = true; dialogueUI.currentNPC = npc; dialogueUI.name.innerText = npc.name;
         dialogueUI.text.innerText = npc.getDialogue()[0]; dialogueUI.box.style.display = "block";
@@ -544,6 +585,16 @@ function updateUI() {
   document.getElementById("level-display").innerText = player.level;
   document.getElementById("gold-display").innerText = player.gold;
   document.getElementById("job-display").innerText = player.job;
+  document.getElementById("zone-display").innerText = ZONES[currentZone].name;
+
+  const z = ZONES[currentZone];
+  if (z.questState === "COMPLETED") {
+    document.getElementById("quest-display").innerText = "Portal Unlocked!";
+  } else if (z.kills !== undefined) {
+    document.getElementById("quest-display").innerText = `Kills: ${z.kills}/${z.target}`;
+  } else {
+    document.getElementById("quest-display").innerText = z.questReq;
+  }
   updateStatWindow();
 }
 
@@ -564,10 +615,18 @@ function update() {
     if (player.animTimer % 8 === 0) player.animFrame++;
   } else { player.animFrame = 0; }
 
-  if (player.questState !== "COMPLETED" && player.x > 450 - player.width) {
-    player.x = 450 - player.width;
+  // Portal Interaction Check
+  const portalUnlocked = ZONES[currentZone].questState === "COMPLETED";
+  if (portalUnlocked && player.x > 930 && player.y > 150 && player.y < 250) {
+    if (currentZone < ZONES.length - 1) {
+      currentZone++;
+      player.x = 50;
+      player.y = 200;
+      updateUI();
+    }
   }
 
+  // Prevents going off edges
   player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
   player.y = Math.max(0, Math.min(canvas.height - player.height, player.y));
 
@@ -582,26 +641,72 @@ function update() {
   projectiles.forEach((p, index) => { p.update(); if (!p.alive) projectiles.splice(index, 1); });
   particles.forEach((pt, index) => { pt.x += pt.vx; pt.y += pt.vy; pt.life--; if (pt.life <= 0) particles.splice(index, 1); });
   damageNumbers.forEach((d, index) => { d.y -= 0.5; d.life--; if (d.life <= 0) damageNumbers.splice(index, 1); });
+}
 
-  const zoneDisplay = document.getElementById("zone-display");
-  if (player.x < 220) zoneDisplay.innerText = "Oakhaven Town";
-  else if (player.x < 450) zoneDisplay.innerText = "Whispering Woods";
-  else if (player.x < 700) zoneDisplay.innerText = "Ashen Caverns";
-  else zoneDisplay.innerText = "Dragons Peak";
+function drawEnvironment(ctx, zone) {
+  if (zone === 0) {
+    // Village/Town graphics
+    ctx.fillStyle = "#3a5a40"; ctx.fillRect(0, 0, 1000, 400); // Grass
+    ctx.fillStyle = "#a3b18a"; ctx.fillRect(0, 180, 1000, 60); // Stone path
+    
+    // Houses
+    drawHouse(ctx, 60, 40, "#7f5539", "#b08968");
+    drawHouse(ctx, 300, 30, "#582f0e", "#7f5539");
+    drawHouse(ctx, 550, 40, "#3d0c02", "#9a8c98");
+    drawHouse(ctx, 750, 240, "#582f0e", "#b08968");
+  } else if (zone === 1) {
+    // Swamp terrain
+    ctx.fillStyle = "#1b4332"; ctx.fillRect(0, 0, 1000, 400);
+    // Muddy pools / water
+    ctx.fillStyle = "#2d6a4f";
+    ctx.beginPath(); ctx.ellipse(250, 120, 120, 60, 0, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(700, 280, 180, 80, 0, 0, Math.PI*2); ctx.fill();
+    // Lily pads
+    ctx.fillStyle = "#52b788";
+    ctx.beginPath(); ctx.arc(220, 110, 12, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(720, 270, 16, 0, Math.PI*2); ctx.fill();
+  } else if (zone === 2) {
+    // Caverns
+    ctx.fillStyle = "#212529"; ctx.fillRect(0, 0, 1000, 400);
+    ctx.fillStyle = "#343a40";
+    // Rocks
+    for(let i=0; i<10; i++) {
+      ctx.fillRect((i*110)%950, (i*70)%330, 40, 30);
+    }
+  } else if (zone === 3) {
+    // Volcanic / Dragon Peak
+    ctx.fillStyle = "#10002b"; ctx.fillRect(0, 0, 1000, 400);
+    // Lava streams
+    ctx.fillStyle = "#d90429";
+    ctx.fillRect(0, 80, 1000, 30);
+    ctx.fillRect(0, 300, 1000, 40);
+  }
+
+  // Draw Portal at Right Edge if Zone Quest Completed
+  const portalUnlocked = ZONES[zone].questState === "COMPLETED";
+  if (portalUnlocked && zone < ZONES.length - 1) {
+    const pX = 940, pY = 160;
+    ctx.fillStyle = "rgba(102, 252, 241, 0.3)";
+    ctx.beginPath(); ctx.ellipse(pX + 20, pY + 40, 25, 45, 0, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = "#66fcf1"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.ellipse(pX + 20, pY + 40, 18 + Math.sin(tick*0.1)*3, 35 + Math.sin(tick*0.1)*3, 0, 0, Math.PI*2); ctx.stroke();
+    ctx.fillStyle = "#66fcf1"; ctx.font = "bold 12px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("PORTAL", pX + 20, pY - 10);
+  }
+}
+
+function drawHouse(ctx, x, y, wallColor, roofColor) {
+  ctx.fillStyle = wallColor; ctx.fillRect(x, y + 40, 100, 70);
+  ctx.fillStyle = roofColor; ctx.beginPath(); ctx.moveTo(x - 10, y + 40); ctx.lineTo(x + 50, y); ctx.lineTo(x + 110, y + 40); ctx.fill();
+  ctx.fillStyle = "#212529"; ctx.fillRect(x + 38, y + 75, 24, 35); // Door
+  ctx.fillStyle = "#ffb703"; ctx.fillRect(x + 15, y + 55, 18, 18); ctx.fillRect(x + 67, y + 55, 18, 18); // Windows
 }
 
 let tick = 0;
 function draw() {
   tick++; ctx.clearRect(0, 0, canvas.width, canvas.height);
   
-  ctx.fillStyle = "#2d6a4f"; ctx.fillRect(0, 0, 220, 400);
-  ctx.fillStyle = "#1b4332"; ctx.fillRect(220, 0, 230, 400);
-  ctx.fillStyle = "#2b2d42"; ctx.fillRect(450, 0, 250, 400);
-  ctx.fillStyle = "#6b705c"; ctx.fillRect(700, 0, 300, 400);
-
-  if (player.questState !== "COMPLETED") {
-    ctx.fillStyle = "rgba(230, 57, 70, 0.6)"; ctx.fillRect(446, 0, 8, 400);
-  }
+  drawEnvironment(ctx, currentZone);
 
   npcs.forEach(npc => npc.draw(ctx, tick));
   mobs.forEach(m => m.draw(ctx, tick));

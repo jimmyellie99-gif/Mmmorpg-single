@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2D Action RPG - Jobs & Skills</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #121212;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            user-select: none;
+        }
+
+        .hud {
+            margin-bottom: 10px;
+            font-size: 16px;
+            display: flex;
+            gap: 20px;
+            background: #1e1e1e;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid #333;
+        }
+
+        canvas {
+            border: 3px solid #444;
+            background-color: #2e7d32;
+            box-shadow: 0 0 20px rgba(0,0,0,0.6);
+        }
+
+        .controls {
+            margin-top: 10px;
+            color: #aaa;
+            font-size: 14px;
+        }
+
+        /* Job Selection Modal */
+        .modal {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #1e1e1e;
+            border: 2px solid #555;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 30px rgba(0,0,0,0.8);
+            text-align: center;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal h2 { margin-top: 0; color: #ffca28; }
+
+        .job-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .job-card {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            padding: 10px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .job-card:hover {
+            background: #3a3a3a;
+            border-color: #ffca28;
+        }
+
+        .job-card h4 { margin: 0 0 5px 0; color: #4fc3f7; }
+        .job-card p { margin: 0; font-size: 12px; color: #ccc; }
+    </style>
+</head>
+<body>
+
+    <div class="hud">
+        <span><strong>HP:</strong> <span id="hp">100</span>/<span id="maxHp">100</span></span>
+        <span><strong>Lvl:</strong> <span id="level">1</span>/100</span>
+        <span><strong>XP:</strong> <span id="xp">0</span>/<span id="nextXp">50</span></span>
+        <span><strong>Job:</strong> <span id="jobTitle" style="color:#ffca28;">Novice</span></span>
+        <span><strong>Skill:</strong> <span id="skillTitle" style="color:#81c784;">None</span></span>
+    </div>
+
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div class="controls">
+        Movement: <strong>WASD / Arrows</strong> | Attack: <strong>Spacebar</strong> | Job Skill: <strong>E Key</strong>
+    </div>
+
+    <!-- Job Selection Window -->
+    <div id="jobModal" class="modal">
+        <h2 id="modalHeader">Select Your Job</h2>
+        <div id="jobGrid" class="job-grid"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elements
+        const hpEl = document.getElementById('hp');
+        const maxHpEl = document.getElementById('maxHp');
+        const levelEl = document.getElementById('level');
+        const xpEl = document.getElementById('xp');
+        const nextXpEl = document.getElementById('nextXp');
+        const jobTitleEl = document.getElementById('jobTitle');
+        const skillTitleEl = document.getElementById('skillTitle');
+        const modal = document.getElementById('jobModal');
+        const jobGrid = document.getElementById('jobGrid');
+        const modalHeader = document.getElementById('modalHeader');
+
+        let isPaused = false;
+
+        // Player Data
+        const player = {
+            x: 400,
+            y: 300,
+            radius: 15,
+            color: '#4fc3f7',
+            speed: 4,
+            hp: 100,
+            maxHp: 100,
+            level: 1,
+            xp: 0,
+            nextXp: 50,
+            jobKey: 'novice',
+            jobName: 'Novice',
+            specKey: null,
+            specName: null,
+            skillName: 'None',
+            skillCooldown: 0,
+            isAttacking: false,
+            attackTimer: 0,
+            attackAngle: 0,
+            damageMultiplier: 1.0,
+            defenseMultiplier: 1.0,
+
+            attack() {
+                this.isAttacking = true;
+                this.attackTimer = 8;
+            },
+
+            useSkill() {
+                if (this.skillCooldown > 0) return;
+                
+                // Activate job specific skills
+                if (this.specKey === 'berserker' || this.jobKey === 'warrior') {
+                    // Whirlwind attack
+                    this.isAttacking = true;
+                    this.attackTimer = 20;
+                    this.skillCooldown = 180; // 3 sec cooldown
+                    spawnSkillText("Whirlwind!");
+                } else if (this.specKey === 'assassin' || this.jobKey === 'rogue') {
+                    // Dash forward
+                    this.x += Math.cos(this.attackAngle) * 120;
+                    this.x = Math.max(15, Math.min(canvas.width - 15, this.x));
+                    this.y += Math.sin(this.attackAngle) * 120;
+                    this.y = Math.max(15, Math.min(canvas.height - 15, this.y));
+                    this.skillCooldown = 120;
+                    spawnSkillText("Shadow Dash!");
+                } else if (this.jobKey === 'tank' || this.specKey === 'paladin') {
+                    // Shield Heal / Iron Skin
+                    this.hp = Math.min(this.maxHp, this.hp + 40);
+                    hpEl.textContent = Math.ceil(this.hp);
+                    this.skillCooldown = 300;
+                    spawnSkillText("Iron Shield!");
+                } else if (this.jobKey === 'mage' || this.specKey === 'archmage') {
+                    // Nova Blast
+                    enemies.forEach(enemy => {
+                        const dist = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+                        if (dist < 150) {
+                            enemy.hp -= 40 * player.damageMultiplier;
+                        }
+                    });
+                    this.skillCooldown = 200;
+                    spawnSkillText("Frost Nova!");
+                } else {
+                    spawnSkillText("No Skill Ready");
+                }
+            }
+        };
+
+        // Skill floating text visual effect
+        let floatingTexts = [];
+        function spawnSkillText(txt) {
+            floatingTexts.push({ text: txt, x: player.x, y: player.y - 25, alpha: 1.0 });
+        }
+
+        // Job Definitions
+        const BASIC_JOBS = {
+            warrior: { name: 'Warrior', desc: 'Balanced fighter with boost to high melee damage.', dmg: 1.5, def: 1.1, hpBonus: 30, skill: 'Whirlwind' },
+            tank:    { name: 'Tank',    desc: 'Heavy defender with massive health pool and defense.', dmg: 0.9, def: 1.6, hpBonus: 80, skill: 'Iron Shield' },
+            rogue:   { name: 'Rogue',   desc: 'Fast agile attacker with high movement speed.', dmg: 1.3, def: 0.9, hpBonus: 10, speedBonus: 2, skill: 'Shadow Dash' },
+            mage:    { name: 'Mage',    desc: 'Spellcaster capable of massive area attacks.', dmg: 1.8, def: 0.7, hpBonus: 0, skill: 'Frost Nova' },
+            archer:  { name: 'Archer',  desc: 'Long-range swift striker.', dmg: 1.4, def: 0.9, hpBonus: 15, skill: 'Rapid Shot' },
+            cleric:  { name: 'Cleric',  desc: 'Holy warrior who regenerates health over time.', dmg: 1.0, def: 1.3, hpBonus: 40, skill: 'Holy Heal' },
+            monk:    { name: 'Monk',    desc: 'Martial artist with quick strikes and high armor.', dmg: 1.3, def: 1.2, hpBonus: 25, skill: 'Chi Burst' },
+            bard:    { name: 'Bard',    desc: 'Versatile support with balanced buffs.', dmg: 1.1, def: 1.1, hpBonus: 20, speedBonus: 1, skill: 'Battle Song' },
+            necromancer: { name: 'Necromancer', desc: 'Dark caster that absorbs health on kills.', dmg: 1.6, def: 0.8, hpBonus: 10, skill: 'Life Drain' },
+            paladin: { name: 'Paladin', desc: 'Holy knight combining high defense and holy strikes.', dmg: 1.2, def: 1.4, hpBonus: 50, skill: 'Smite' }
+        };
+
+        const SPECIALIZATIONS = {
+            warrior: [
+                { id: 'berserker', name: 'Berserker', desc: 'High risk high damage brute force.', dmg: 2.2, def: 0.9, skill: 'Wild Rage' },
+                { id: 'gladiator', name: 'Gladiator', desc: 'Master of crowd control combat.', dmg: 1.8, def: 1.3, skill: 'Shield Bash' },
+                { id: 'warlord',   name: 'Warlord',   desc: 'Tactical leader with boosted defense.', dmg: 1.6, def: 1.5, skill: 'War Cry' },
+                { id: 'swordmaster', name: 'Swordmaster', desc: 'Rapid precision slicing attacks.', dmg: 2.0, def: 1.0, skill: 'Blade Flurry' },
+                { id: 'knight',    name: 'Knight',    desc: 'Armored charger with heavy armor.', dmg: 1.5, def: 1.7, skill: 'Charge' }
+            ],
+            rogue: [
+                { id: 'assassin',  name: 'Assassin',  desc: 'Lethal single-target burst damage.', dmg: 2.5, def: 0.8, skill: 'Shadow Strike' },
+                { id: 'shadow',    name: 'Shadow',    desc: 'Evasive phantom who moves fast.', dmg: 1.7, def: 1.1, speedBonus: 3, skill: 'Vanish' },
+                { id: 'ninja',     name: 'Ninja',     desc: 'Swift ninja with throwing stars.', dmg: 1.9, def: 0.9, skill: 'Shuriken Storm' },
+                { id: 'thief',     name: 'Thief',     desc: 'Fast attacks and quick movement.', dmg: 1.5, def: 1.0, speedBonus: 2, skill: 'Steal Life' },
+                { id: 'duelist',   name: 'Duelist',   desc: 'Fencing master with high counters.', dmg: 1.8, def: 1.2, skill: 'Parry' }
+            ]
+            // Standard specializations fall back to general buffs for remaining paths
+        };
+
+        // Inputs
+        const keys = {};
+        window.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ' && !player.isAttacking && !isPaused) {
+                player.attack();
+            }
+            if ((e.key === 'e' || e.key === 'E') && !isPaused) {
+                player.useSkill();
+            }
+        });
+        window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+        // Enemies
+        const enemies = [];
+        function spawnEnemy() {
+            if (isPaused || enemies.length >= 25) return;
+            
+            const side = Math.floor(Math.random() * 4);
+            let x, y;
+            if (side === 0) { x = Math.random() * canvas.width; y = -20; }
+            else if (side === 1) { x = canvas.width + 20; y = Math.random() * canvas.height; }
+            else if (side === 2) { x = Math.random() * canvas.width; y = canvas.height + 20; }
+            else { x = -20; y = Math.random() * canvas.height; }
+
+            // Enemies scale stats based on player level
+            enemies.push({
+                x: x,
+                y: y,
+                radius: 12 + Math.min(10, Math.floor(player.level / 10)),
+                color: player.level > 50 ? '#9c27b0' : '#e53935',
+                speed: 1.2 + (player.level * 0.03),
+                hp: 15 + (player.level * 12),
+                maxHp: 15 + (player.level * 12),
+                damage: 5 + (player.level * 0.8)
+            });
+        }
+        setInterval(spawnEnemy, 1500);
+
+        // Experience & Level Up System
+        function addExperience(amount) {
+            if (player.level >= 100) return;
+
+            player.xp += amount;
+            if (player.xp >= player.nextXp) {
+                player.xp -= player.nextXp;
+                player.level++;
+                player.nextXp = Math.floor(player.nextXp * 1.25);
+                player.maxHp += 15;
+                player.hp = player.maxHp;
+
+                // Level Up Check Prompts
+                if (player.level === 10 && player.jobKey === 'novice') {
+                    showBasicJobSelection();
+                } else if (player.level === 25 && !player.specKey) {
+                    showSpecializationSelection();
+                }
+            }
+
+            // Update UI
+            hpEl.textContent = Math.ceil(player.hp);
+            maxHpEl.textContent = player.maxHp;
+            levelEl.textContent = player.level;
+            xpEl.textContent = player.xp;
+            nextXpEl.textContent = player.nextXp;
+        }
+
+        // Job Selection Modals
+        function showBasicJobSelection() {
+            isPaused = true;
+            modalHeader.textContent = "Level 10 Reached! Select Your Basic Job";
+            jobGrid.innerHTML = "";
+
+            Object.keys(BASIC_JOBS).forEach(key => {
+                const job = BASIC_JOBS[key];
+                const card = document.createElement('div');
+                card.className = 'job-card';
+                card.innerHTML = `<h4>${job.name}</h4><p>${job.desc}</p><p><strong>Skill:</strong> ${job.skill}</p>`;
+                card.onclick = () => selectBasicJob(key);
+                jobGrid.appendChild(card);
+            });
+
+            modal.style.display = 'block';
+        }
+
+        function selectBasicJob(key) {
+            const job = BASIC_JOBS[key];
+            player.jobKey = key;
+            player.jobName = job.name;
+            player.damageMultiplier *= job.dmg;
+            player.defenseMultiplier *= job.def;
+            player.maxHp += job.hpBonus;
+            player.hp = player.maxHp;
+            if (job.speedBonus) player.speed += job.speedBonus;
+            player.skillName = job.skill;
+
+            jobTitleEl.textContent = player.jobName;
+            skillTitleEl.textContent = player.skillName;
+
+            modal.style.display = 'none';
+            isPaused = false;
+        }
+
+        function showSpecializationSelection() {
+            isPaused = true;
+            modalHeader.textContent = "Level 25 Reached! Choose Your Specialization";
+            jobGrid.innerHTML = "";
+
+            const specs = SPECIALIZATIONS[player.jobKey] || [
+                { id: player.jobKey + '_master', name: player.jobName + ' Master', desc: 'Master of core job skills.', dmg: 1.5, def: 1.3, skill: 'Master Stance' },
+                { id: player.jobKey + '_champion', name: player.jobName + ' Champion', desc: 'Champion warrior boosting damage.', dmg: 1.8, def: 1.1, skill: 'Heroic Strike' },
+                { id: player.jobKey + '_guardian', name: player.jobName + ' Guardian', desc: 'Defensive powerhouse.', dmg: 1.2, def: 1.6, skill: 'Aura Guard' },
+                { id: player.jobKey + '_vanquisher', name: player.jobName + ' Vanquisher', desc: 'High offensive multiplier.', dmg: 2.0, def: 1.0, skill: 'Vanquish' },
+                { id: player.jobKey + '_overlord', name: player.jobName + ' Overlord', desc: 'Ultimate master class.', dmg: 1.6, def: 1.4, skill: 'Dominate' }
+            ];
+
+            specs.forEach(spec => {
+                const card = document.createElement('div');
+                card.className = 'job-card';
+                card.innerHTML = `<h4>${spec.name}</h4><p>${spec.desc}</p><p><strong>Skill:</strong> ${spec.skill}</p>`;
+                card.onclick = () => selectSpecialization(spec);
+                jobGrid.appendChild(card);
+            });
+
+            modal.style.display = 'block';
+        }
+
+        function selectSpecialization(spec) {
+            player.specKey = spec.id;
+            player.specName = spec.name;
+            player.damageMultiplier *= spec.dmg;
+            player.defenseMultiplier *= spec.def;
+            if (spec.speedBonus) player.speed += spec.speedBonus;
+            player.skillName = spec.skill;
+
+            jobTitleEl.textContent = player.specName;
+            skillTitleEl.textContent = player.skillName;
+
+            modal.style.display = 'none';
+            isPaused = false;
+        }
+
+        // Game Logic Updates
+        function update() {
+            if (isPaused || player.hp <= 0) return;
+
+            if (player.skillCooldown > 0) player.skillCooldown--;
+
+            // Player Movement
+            let moveX = 0;
+            let moveY = 0;
+
+            if ((keys['ArrowLeft'] || keys['a']) && player.x > player.radius) moveX -= 1;
+            if ((keys['ArrowRight'] || keys['d']) && player.x < canvas.width - player.radius) moveX += 1;
+            if ((keys['ArrowUp'] || keys['w']) && player.y > player.radius) moveY -= 1;
+            if ((keys['ArrowDown'] || keys['s']) && player.y < canvas.height - player.radius) moveY += 1;
+
+            if (moveX !== 0 || moveY !== 0) {
+                player.x += moveX * player.speed;
+                player.y += moveY * player.speed;
+                player.attackAngle = Math.atan2(moveY, moveX);
+            }
+
+            // Attack Logic
+            if (player.isAttacking) {
+                player.attackTimer--;
+                if (player.attackTimer <= 0) {
+                    player.isAttacking = false;
+                }
+            }
+
+            // Update Floating Text
+            for (let i = floatingTexts.length - 1; i >= 0; i--) {
+                const ft = floatingTexts[i];
+                ft.y -= 0.8;
+                ft.alpha -= 0.02;
+                if (ft.alpha <= 0) floatingTexts.splice(i, 1);
+            }
+
+            // Enemy Updates
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+
+                // Pursuit
+                const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+                enemy.x += Math.cos(angle) * enemy.speed;
+                enemy.y += Math.sin(angle) * enemy.speed;
+
+                // Enemy hitting player
+                const distToPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+                if (distToPlayer < player.radius + enemy.radius) {
+                    player.hp -= (enemy.damage / player.defenseMultiplier) * 0.05;
+                    hpEl.textContent = Math.max(0, Math.ceil(player.hp));
+                }
+
+                // Player attack hitting enemy
+                if (player.isAttacking) {
+                    const swordX = player.x + Math.cos(player.attackAngle) * 35;
+                    const swordY = player.y + Math.sin(player.attackAngle) * 35;
+                    const distToSword = Math.hypot(swordX - enemy.x, swordY - enemy.y);
+
+                    if (distToSword < enemy.radius + 25) {
+                        enemy.hp -= 8 * player.damageMultiplier;
+                        if (enemy.hp <= 0) {
+                            enemies.splice(i, 1);
+                            addExperience(20 + (player.level * 2));
+                            continue;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Render Frame
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (player.hp <= 0) {
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '40px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText("GAME OVER", canvas.width / 2, canvas.height / 2);
+                ctx.font = '20px Arial';
+                ctx.fillText("Refresh page to restart", canvas.width / 2, canvas.height / 2 + 40);
+                return;
+            }
+
+            // Draw Attack Swing / Skill Arc
+            if (player.isAttacking) {
+                ctx.beginPath();
+                ctx.arc(player.x, player.y, 40, player.attackAngle - 0.9, player.attackAngle + 0.9);
+                ctx.strokeStyle = player.skillCooldown > 170 ? '#ffca28' : '#ffffff';
+                ctx.lineWidth = 6;
+                ctx.stroke();
+            }
+
+            // Draw Player
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+            ctx.fillStyle = player.color;
+            ctx.fill();
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw Enemies with Health Bars
+            enemies.forEach(enemy => {
+                ctx.beginPath();
+                ctx.arc(enemy.x, enemy.y, enemy.radius, 0, Math.PI * 2);
+                ctx.fillStyle = enemy.color;
+                ctx.fill();
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Enemy health bar
+                const barW = 24;
+                const barH = 4;
+                const pct = Math.max(0, enemy.hp / enemy.maxHp);
+                ctx.fillStyle = '#000';
+                ctx.fillRect(enemy.x - barW/2, enemy.y - enemy.radius - 8, barW, barH);
+                ctx.fillStyle = '#76ff03';
+                ctx.fillRect(enemy.x - barW/2, enemy.y - enemy.radius - 8, barW * pct, barH);
+            });
+
+            // Draw Floating Texts
+            floatingTexts.forEach(ft => {
+                ctx.fillStyle = `rgba(255, 235, 59, ${ft.alpha})`;
+                ctx.font = 'bold 14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(ft.text, ft.x, ft.y);
+            });
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>

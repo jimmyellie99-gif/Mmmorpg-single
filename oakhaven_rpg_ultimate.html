@@ -1,0 +1,1174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oakhaven RPG - Expanded Edition</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#080b12;color:#e8edf2;font-family:Segoe UI,Arial,sans-serif}
+body{display:flex;justify-content:center;align-items:center}
+#game-container{position:relative;width:min(1000px,100vw);height:400px}
+canvas{display:block;width:100%;height:400px;background:#18222d;border:3px solid #66fcf1;image-rendering:pixelated}
+#ui-bar{position:absolute;top:8px;left:8px;right:8px;z-index:10;display:flex;gap:12px;align-items:center;justify-content:space-between;background:rgba(7,10,16,.9);border:1px solid #45a29e;border-radius:7px;padding:7px 11px;font-size:12px;pointer-events:none}
+.stat{color:#66fcf1;font-weight:700}.gold{color:#ffd700;font-weight:700}.xp{color:#d58cff;font-weight:700}
+#skill-bar{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:7px;background:rgba(7,10,16,.9);border:1px solid #45a29e;border-radius:9px;padding:6px}
+.skill-slot{width:48px;height:48px;border:2px solid #66fcf1;border-radius:6px;background:#202b38;color:#66fcf1;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;position:relative}
+.skill-slot.r{border-color:#ffd700;color:#ffd700}
+.skill-slot small{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:8px;color:#c5c6c7}
+.cd-overlay{position:absolute;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;color:#ff6b6b;border-radius:4px}
+.panel{display:none;position:absolute;z-index:30;background:rgba(7,10,16,.97);border:2px solid #66fcf1;border-radius:9px;padding:15px;box-shadow:0 8px 30px #0009}
+.panel h2,.panel h3{margin:0 0 10px;color:#66fcf1}
+#stat-window{left:35px;top:50px;width:300px}
+#inventory-window{right:35px;top:50px;width:340px;max-height:330px;overflow:auto}
+#quest-window{left:35px;top:50px;width:360px}
+#skill-window{right:35px;top:50px;width:370px;max-height:330px;overflow:auto}
+#shop-box,#class-select-box,#character-box,#pause-box{left:50%;top:38px;transform:translateX(-50%);width:560px;max-height:325px;overflow:auto}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#1e2935;padding:8px;border-radius:5px;margin:5px 0}
+button{border:0;border-radius:5px;padding:7px 11px;background:#66fcf1;color:#071016;font-weight:800;cursor:pointer}
+button:hover{background:#45a29e;color:white}
+button.goldBtn{background:#ffd700}
+button.danger{background:#ff5c69;color:white}
+button.secondary{background:#586575;color:white}
+input,select{background:#121923;color:white;border:1px solid #45a29e;border-radius:5px;padding:7px}
+.inv-item{cursor:pointer}.inv-item:hover{outline:1px solid #ffd700}
+.common{color:#b0bec5}.uncommon{color:#55efc4}.rare{color:#74b9ff}.epic{color:#a29bfe}.legendary{color:#ffeaa7;font-weight:800}
+#dialogue-box{display:none;position:absolute;z-index:25;bottom:70px;left:35px;right:35px;background:rgba(7,10,16,.97);border:2px solid #66fcf1;border-radius:9px;padding:13px}
+#dialogue-name{font-weight:800;color:#66fcf1;margin-bottom:5px}
+#dialogue-text{line-height:1.45}
+#toast{position:absolute;z-index:50;top:55px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.88);border:1px solid #ffd700;color:#fff;padding:8px 14px;border-radius:7px;display:none}
+.bar{height:7px;background:#263241;border-radius:4px;overflow:hidden;margin-top:3px}.bar>i{display:block;height:100%}
+#bossbar{display:none;position:absolute;z-index:12;top:48px;left:25%;width:50%;text-align:center;color:#ff6b6b;font-weight:800}
+#help{position:absolute;bottom:8px;left:10px;z-index:8;color:#aeb8c2;font-size:10px;text-align:left;line-height:1.35;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="game-container">
+<canvas id="gameCanvas" width="1000" height="400"></canvas>
+
+<div id="ui-bar">
+  <div>Zone: <span id="zone-display" class="stat">Oakhaven Town</span></div>
+  <div>Job: <span id="job-display" class="stat">Novice</span> Lv <span id="level-display" class="stat">1</span></div>
+  <div>HP: <span id="hp-display" class="stat">100/100</span></div>
+  <div>XP: <span id="xp-display" class="xp">0/50</span></div>
+  <div>Gold: <span id="gold-display" class="gold">0</span></div>
+  <div>Quest: <span id="quest-display" class="stat">Talk to Elder</span></div>
+</div>
+
+<div id="skill-bar">
+  <div class="skill-slot">Q<small>Arc</small><span id="cd-q" class="cd-overlay" style="display:none"></span></div>
+  <div class="skill-slot">W<small>Blast</small><span id="cd-w" class="cd-overlay" style="display:none"></span></div>
+  <div class="skill-slot">E<small>Heal</small><span id="cd-e" class="cd-overlay" style="display:none"></span></div>
+  <div class="skill-slot r">R<small>ULT</small><span id="cd-r" class="cd-overlay" style="display:none"></span></div>
+</div>
+
+<div id="bossbar"><div id="boss-name">VOID TITAN</div><div class="bar"><i id="boss-hp" style="width:100%;background:#e63946"></i></div></div>
+
+<div id="help">Move: WASD/Arrows • Attack: J • Ranged: K • Interact: F/Space • Stats: C • Inventory: I • Skills: Q/W/E/R • Quests: L • Skill Tree: T • Character: V • Pause: Esc</div>
+<div id="toast"></div>
+
+<div id="stat-window" class="panel">
+<h3>Character Stats [C]</h3>
+<div>Job: <span id="st-job" class="stat"></span></div>
+<div>Level: <span id="st-level"></span> | Attribute Points: <span id="st-points"></span></div>
+<div class="row">STR <span id="st-str"></span><button onclick="spendPoint('str')">+</button></div>
+<div class="row">DEX <span id="st-dex"></span><button onclick="spendPoint('dex')">+</button></div>
+<div class="row">INT <span id="st-int"></span><button onclick="spendPoint('int')">+</button></div>
+<div class="row">VIT <span id="st-vit"></span><button onclick="spendPoint('vit')">+</button></div>
+<hr>
+<div>ATK: <span id="st-atk"></span> | DEF: <span id="st-def"></span></div>
+<div>Crit: <span id="st-crit"></span>% | Move Speed: <span id="st-speed"></span></div>
+<div>Weapon: <span id="eq-weapon" class="stat"></span></div>
+<div>Armor: <span id="eq-armor" class="stat"></span></div>
+<div>Accessory: <span id="eq-acc" class="stat"></span></div>
+<button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="inventory-window" class="panel">
+<h3>Inventory [I]</h3><div id="inventory-list"></div><button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="quest-window" class="panel">
+<h3>Quest Log [L]</h3><div id="quest-list"></div><button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="skill-window" class="panel">
+<h3>Skill Tree [T]</h3><div id="skill-list"></div><button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="dialogue-box">
+<div id="dialogue-name"></div><div id="dialogue-text"></div>
+<div style="margin-top:8px"><button onclick="advanceDialogue()">Continue [F]</button></div>
+</div>
+
+<div id="shop-box" class="panel">
+<h3>Blacksmith's Armory</h3>
+<div id="shop-items"></div><button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="class-select-box" class="panel">
+<h3 id="class-select-title">Choose Your Job</h3><div id="class-options"></div>
+</div>
+
+<div id="character-box" class="panel">
+<h3>Character Builder [V]</h3>
+<div class="row"><label>Name <input id="char-name" maxlength="16" value="Hero"></label></div>
+<div class="row"><label>Build <select id="char-build"><option value="balanced">Balanced</option><option value="power">Power</option><option value="speed">Speed</option><option value="magic">Magic</option><option value="tank">Tank</option></select></label></div>
+<div class="row"><label>Hair <select id="char-hair"><option>Short</option><option>Long</option><option>Spiky</option><option>Hood</option></select></label></div>
+<p style="color:#aeb8c2">Your build changes starting stats. You can still customize attributes later.</p>
+<button onclick="applyCharacter()">Apply Character</button>
+<button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="pause-box" class="panel">
+<h3>Paused</h3><p>Game progress is kept in memory while this page is open.</p>
+<button onclick="togglePause()">Resume</button>
+<button class="danger" onclick="resetGame()">New Game</button>
+</div>
+</div>
+
+
+<style>
+/* ===== RPG EXPANSION UI ===== */
+#rpg-panel {
+  display:none; position:absolute; z-index:30; top:30px; left:80px; right:80px;
+  max-height:340px; overflow:auto; background:rgba(11,12,16,.97);
+  border:2px solid #66fcf1; border-radius:10px; padding:18px; text-align:left;
+  box-shadow:0 0 30px rgba(102,252,241,.18);
+}
+#rpg-panel h2 {margin:0 0 10px;color:#66fcf1}
+.rpg-grid {display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.rpg-card {background:#1f2833;border:1px solid #45a29e;border-radius:6px;padding:9px}
+.rpg-card strong {color:#ffd700}.muted{color:#9aa}
+.rpg-btn {background:#66fcf1;color:#0b0c10;border:0;border-radius:5px;padding:6px 10px;font-weight:bold;cursor:pointer}
+.rpg-btn.alt {background:#45a29e;color:white}.rpg-row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+#toast {display:none;position:absolute;z-index:50;left:50%;transform:translateX(-50%);
+ bottom:120px;background:rgba(11,12,16,.95);border:1px solid #66fcf1;color:#fff;
+ padding:9px 14px;border-radius:6px;font-weight:bold}
+#boss-bar {display:none;position:absolute;z-index:7;top:52px;left:25%;right:25%;pointer-events:none}
+#boss-name{color:#ffd700;font-weight:bold}.boss-track{height:10px;background:#222;border:1px solid #d90429}
+#boss-fill{height:100%;width:100%;background:#d90429}
+</style>
+<div id="rpg-panel">
+  <h2 id="panel-title">RPG Menu</h2>
+  <div id="panel-content"></div>
+  <div class="rpg-row"><button class="rpg-btn alt" onclick="closeRPGPanel()">Close [Esc]</button></div>
+</div>
+<div id="toast"></div>
+<div id="boss-bar"><div id="boss-name"></div><div class="boss-track"><div id="boss-fill"></div></div></div>
+<script>
+/* ===== OAKHAVEN RPG EXPANSION ===== */
+const JOB_LORE = {
+Warrior:{lore:"A frontline master who turns raw strength into relentless pressure.",abilities:[
+["Q","Shield Breaker","A heavy strike that deals 160% ATK and briefly staggers enemies."],
+["W","War Cry","Boosts ATK by 35% for 6 seconds."],["E","Second Wind","Restores 25% of maximum HP and grants brief protection."],
+["R","Titan Cleave","A massive arc attack dealing 500% ATK in a wide area."]]},
+Rogue:{lore:"A shadow fighter built around speed, critical hits, and sudden bursts.",abilities:[
+["Q","Shadowstep","Blink forward and strike nearby enemies for 180% ATK."],
+["W","Poison Fan","Throws blades that damage enemies over time."],["E","Vanish","Become untargetable briefly and gain movement speed."],
+["R","Assassinate","A devastating single-target strike with increased critical chance."]]},
+Tank:{lore:"An immovable guardian who survives where other heroes fall.",abilities:[
+["Q","Shield Bash","Deals damage and reduces enemy movement."],["W","Fortify","Greatly increases DEF for 8 seconds."],
+["E","Taunt","Forces nearby enemies to focus on you and lowers their damage."],["R","Aegis Fortress","Creates a huge defensive field and deals damage around you."]]},
+Mage:{lore:"A master of arcane power who controls the battlefield from range.",abilities:[
+["Q","Arcane Bolt","Fires a powerful magical projectile."],["W","Meteor","Calls down a meteor that damages an area."],
+["E","Blink","Teleports a short distance."],["R","Sunfall","Summons a miniature sun that crashes down for enormous area damage."]]},
+Archer:{lore:"A precise hunter who wins fights before enemies can reach them.",abilities:[
+["Q","Piercing Arrow","Fires an arrow through multiple enemies."],["W","Rain of Arrows","Bombards a large area."],
+["E","Eagle Eye","Temporarily increases critical-hit chance."],["R","Skybreaker","Fires a giant charged arrow dealing extreme damage."]]},
+Priest:{lore:"A sacred support fighter who turns faith into healing and protection.",abilities:[
+["Q","Smite","Strikes an enemy with holy energy."],["W","Holy Nova","Damages enemies while healing the player."],
+["E","Blessing","Regenerates HP over time and grants defense."],["R","Divine Judgment","Calls down a huge holy strike across the battlefield."]]},
+Bard:{lore:"A magical performer whose music changes the rhythm of battle.",abilities:[
+["Q","Sonic Note","A ranged sound blast."],["W","Battle Hymn","Raises attack and attack speed."],
+["E","Encore","Refreshes part of your other cooldowns."],["R","Finale","A giant musical shockwave that damages all nearby enemies."]]},
+Druid:{lore:"A nature-bound warrior who blends healing, transformation, and elemental force.",abilities:[
+["Q","Vine Lash","Roots enemies with enchanted vines."],["W","Bear Form","Gain powerful defenses and stronger melee attacks."],
+["E","Rejuvenation","Heals over time."],["R","Wrath of Nature","Summons a storm of roots and lightning across a huge area."]]},
+Necromancer:{lore:"A forbidden mage who commands fallen spirits and trades life for power.",abilities:[
+["Q","Soul Bolt","Launches a projectile fueled by stolen life force."],["W","Raise Dead","Summons skeleton allies that attack nearby enemies."],
+["E","Life Drain","Damages an enemy while restoring your HP."],["R","Army of the Damned","Summons a temporary undead army and unleashes a massive dark blast."]]},
+Paladin:{lore:"A holy knight combining heavy armor, discipline, and divine power.",abilities:[
+["Q","Radiant Strike","A powerful holy melee attack."],["W","Holy Shield","Blocks a large portion of incoming damage."],
+["E","Judgment","Marks nearby enemies, causing them to take increased damage."],["R","Heaven's Wrath","Calls down divine energy in a huge area."]]}
+};
+
+const ADVANCED_LORE = {
+Berserker:"A warrior who sacrifices safety for explosive damage.",
+Warlord:"A commander whose strength empowers every battle.",
+Gladiator:"A duelist trained to turn enemy mistakes into openings.",
+Dreadnought:"A walking fortress that refuses to be stopped.",
+Champion:"A perfected warrior who excels at sustained combat.",
+Assassin:"A killer who specializes in burst damage and critical strikes.",
+Shadowblade:"A phantom fighter who disappears between attacks.",
+Trickster:"A deceptive rogue who confuses enemies and controls space.",
+Corsair:"A mobile raider who mixes speed with ranged pressure.",
+Nightstalker:"A hunter who becomes stronger from the shadows.",
+Juggernaut:"A massive tank who converts durability into offensive power.",
+Guardian:"A protector who specializes in shields and allies.",
+Bulwark:"A defensive specialist built around area control.",
+Ironclad:"A heavily armored fighter with exceptional resistance.",
+Colossus:"A giant of war whose presence dominates the battlefield.",
+Archmage:"An arcane scholar capable of overwhelming magical bursts.",
+Elementalist:"A caster who channels multiple elements.",
+Chronomancer:"A time mage who manipulates cooldowns and movement.",
+Arcanist:"A technical mage who converts spell power into combos.",
+Sorcerer:"A raw magic wielder with devastating burst spells.",
+Sniper:"A long-range marksman with extreme precision.",
+Ranger:"A versatile hunter who controls distance.",
+Sharpshooter:"A specialist in charged attacks and critical hits.",
+Beastmaster:"A hunter who fights beside summoned beasts.",
+Hawkeye:"An elite archer whose shots rarely miss.",
+"High Priest":"A master healer whose blessings can turn battles around.",
+Inquisitor:"A holy hunter specializing in punishing corrupted foes.",
+Monk:"A disciplined martial artist who combines strikes and spiritual energy.",
+Oracle:"A seer who manipulates fate and prevents disaster.",
+Templar:"A holy warrior built around defense and divine retaliation.",
+Minstrel:"A refined performer who strengthens allies through music.",
+Troubadour:"A wandering musician whose songs manipulate combat.",
+Skald:"A battle poet whose chants empower every strike.",
+Siren:"A magical singer who charms and disrupts enemies.",
+Virtuoso:"A perfect performer who chains musical abilities together.",
+Shapeshifter:"A druid who changes forms to match the battle.",
+Archdruid:"A master of nature magic with enormous area control.",
+Stormcaller:"A druid who commands lightning and wind.",
+Wildkeeper:"A guardian of beasts and natural spirits.",
+Bramblemancer:"A nature mage who traps enemies in living thorns.",
+Lich:"An immortal undead mage who commands death magic.",
+"Lord of Bones":"A necromancer who builds an elite skeletal army.",
+Soulreaper:"A spirit hunter who grows stronger from defeated enemies.",
+Plaguebringer:"A dark caster who spreads weakening curses.",
+Deathknight:"A fallen warrior combining undead magic and heavy combat.",
+Crusader:"A holy champion who leads from the front.",
+"Holy Avenger":"A knight empowered by divine retaliation.",
+Sunbreaker:"A warrior who channels solar fire into attacks.",
+Justicar:"A judge of the battlefield who punishes marked enemies.",
+"Divine Shield":"A supreme defender protected by sacred power."
+};
+
+let achievements = JSON.parse(localStorage.getItem("oakhaven_achievements")||"{}");
+const ACHIEVEMENTS = {
+firstblood:["First Blood","Defeat your first enemy"],level10:["Rising Hero","Reach level 10"],
+legendary:["Legendary Find","Loot a Legendary item"],boss:["Titan Slayer","Defeat a Void Titan"],
+crafter:["Master Smith","Craft 5 items"],dungeon:["Dungeon Delver","Clear a dungeon"],
+collector:["Treasure Hunter","Collect 25 items"],mount:["Ride Into Adventure","Unlock a mount"]
+};
+let crafting = {wood:0,iron:0,crystal:0,essence:0};
+let pets = JSON.parse(localStorage.getItem("oakhaven_pets")||"[]");
+let mount = localStorage.getItem("oakhaven_mount")||"";
+let dungeon = {active:false,wave:0,kills:0};
+
+function toast(msg){
+ const t=document.getElementById("toast"); t.innerText=msg;t.style.display="block";
+ clearTimeout(window._toast);window._toast=setTimeout(()=>t.style.display="none",2200);
+}
+function unlockAchievement(id){
+ if(!achievements[id]){achievements[id]=true;localStorage.setItem("oakhaven_achievements",JSON.stringify(achievements));toast("Achievement unlocked: "+ACHIEVEMENTS[id][0]);}
+}
+function openRPGPanel(title,html){
+ document.getElementById("panel-title").innerText=title;
+ document.getElementById("panel-content").innerHTML=html;
+ document.getElementById("rpg-panel").style.display="block";
+}
+function closeRPGPanel(){document.getElementById("rpg-panel").style.display="none";}
+function showJobs(){
+ let html="";
+ Object.keys(JOB_LORE).forEach(j=>{
+   const a=JOB_LORE[j].abilities.map(x=>`<div><b>${x[0]} — ${x[1]}</b>: ${x[2]}</div>`).join("");
+   html+=`<div class="rpg-card"><strong>${j}</strong><p>${JOB_LORE[j].lore}</p>${a}</div>`;
+ });
+ openRPGPanel("Job Codex",`<div class="rpg-grid">${html}</div>`);
+}
+function showAdvancedLore(){
+ let html=Object.entries(ADVANCED_LORE).map(([j,l])=>`<div class="rpg-card"><strong>${j}</strong><p>${l}</p></div>`).join("");
+ openRPGPanel("Advanced Job Lore",`<div class="rpg-grid">${html}</div>`);
+}
+function showAchievements(){
+ let html=Object.entries(ACHIEVEMENTS).map(([id,a])=>`<div class="rpg-card"><strong>${achievements[id]?"✓ ":"○ "}${a[0]}</strong><div>${a[1]}</div></div>`).join("");
+ openRPGPanel("Achievements",`<div class="rpg-grid">${html}</div>`);
+}
+function saveGame(){
+ const data={player,currentZone,ZONES,smithQuest,crafting,pets,mount,achievements};
+ localStorage.setItem("oakhaven_save",JSON.stringify(data));toast("Game saved!");
+}
+function loadGame(){
+ const raw=localStorage.getItem("oakhaven_save");if(!raw){toast("No save found.");return;}
+ try{
+  const d=JSON.parse(raw);Object.assign(player,d.player);currentZone=d.currentZone||0;
+  if(d.ZONES) d.ZONES.forEach((z,i)=>Object.assign(ZONES[i],z));
+  if(d.smithQuest)Object.assign(smithQuest,d.smithQuest);crafting=d.crafting||crafting;pets=d.pets||[];mount=d.mount||"";
+  updateUI();updateInventoryUI();toast("Game loaded!");
+ }catch(e){toast("Save file could not be loaded.");}
+}
+function showSave(){
+ openRPGPanel("Save / Load",`<p>Save your campaign in this browser.</p>
+ <div class="rpg-row"><button class="rpg-btn" onclick="saveGame()">Save Game</button>
+ <button class="rpg-btn" onclick="loadGame()">Load Game</button>
+ <button class="rpg-btn alt" onclick="exportSave()">Export Save</button>
+ <button class="rpg-btn alt" onclick="importSave()">Import Save</button></div>`);
+}
+function exportSave(){
+ const raw=localStorage.getItem("oakhaven_save")||"{}";prompt("Copy your save data:",raw);
+}
+function importSave(){
+ const raw=prompt("Paste your save data:");if(!raw)return;
+ try{localStorage.setItem("oakhaven_save",raw);loadGame();}catch(e){toast("Invalid save.");}
+}
+function showCrafting(){
+ const recipes=[
+  ["Iron Blade","iron",3,"Weapon",12],["Crystal Guard","crystal",3,"Armor",12],
+  ["Soul Charm","essence",3,"Accessory",12],["Hunter Bow","wood",4,"Weapon",10]
+ ];
+ let html=recipes.map((r,i)=>`<div class="rpg-card"><strong>${r[0]}</strong><p>Requires ${r[2]} ${r[1]}. Creates ${r[3]} +${r[4]}.</p><button class="rpg-btn" onclick="craftItem(${i})">Craft</button></div>`).join("");
+ openRPGPanel("Crafting",`<p>Materials — Wood: ${crafting.wood} | Iron: ${crafting.iron} | Crystal: ${crafting.crystal} | Essence: ${crafting.essence}</p><div class="rpg-grid">${html}</div>`);
+}
+function craftItem(i){
+ const r=[["Iron Blade","iron",3,"Weapon",12],["Crystal Guard","crystal",3,"Armor",12],["Soul Charm","essence",3,"Accessory",12],["Hunter Bow","wood",4,"Weapon",10]][i];
+ if(crafting[r[1]]<r[2]){toast("Not enough materials.");return;}
+ crafting[r[1]]-=r[2];player.inventory.push({id:Math.random(),name:r[0],type:r[3],level:player.level,rarity:"Rare",stat:r[4]});
+ unlockAchievement("crafter");updateInventoryUI();showCrafting();toast("Crafted "+r[0]+"!");
+}
+function showPets(){
+ let html=pets.length?pets.map((p,i)=>`<div class="rpg-card"><strong>${p.name}</strong><div>${p.bonus}</div></div>`).join(""):"<p>No pets yet. Rare enemies can drop pet eggs.</p>";
+ openRPGPanel("Pets",`<p>Active pet bonuses are applied automatically.</p><div class="rpg-grid">${html}</div>`);
+}
+function showMounts(){
+ openRPGPanel("Mounts",`<div class="rpg-card"><strong>Stormrunner</strong><p>Increases movement speed by 40%.</p>
+ <button class="rpg-btn" onclick="unlockMount()">Unlock for 500 Gold</button></div><p>Current: ${mount||"None"}</p>`);
+}
+function unlockMount(){
+ if(mount){toast("Already unlocked.");return;}if(player.gold<500){toast("Need 500 Gold.");return;}
+ player.gold-=500;mount="Stormrunner";localStorage.setItem("oakhaven_mount",mount);player.speed=4.9;unlockAchievement("mount");updateUI();showMounts();
+}
+function showDungeon(){
+ if(dungeon.active){toast("Dungeon already active.");return;}
+ dungeon={active:true,wave:1,kills:0};currentZone=2;player.x=300;player.y=200;
+ toast("Dungeon entered — survive 5 waves!");
+}
+function dungeonKill(){
+ if(!dungeon.active)return;
+ dungeon.kills++;
+ if(dungeon.kills>=5){
+   dungeon.wave++;dungeon.kills=0;
+   if(dungeon.wave>5){dungeon.active=false;player.gold+=500;addXP(1000);unlockAchievement("dungeon");toast("Dungeon cleared! +500G +1000XP");}
+   else toast("Wave "+dungeon.wave+"!");
+ }
+}
+function equipmentCompare(item){
+ const old=player.equipment[item.type];
+ const oldStat=old?old.stat:0;
+ return `Current: ${old?old.name:"None"} (+${oldStat}) | New: ${item.name} (+${item.stat}) | Change: ${item.stat-oldStat>=0?"+":""}${item.stat-oldStat}`;
+}
+
+/* Add passive material drops to kills, special pets, and achievements. */
+const _oldTakeDamage = RespawningMob.prototype.takeDamage;
+RespawningMob.prototype.takeDamage = function(amount){
+ const wasAlive=this.alive;
+ _oldTakeDamage.call(this,amount);
+ if(wasAlive && !this.alive){
+   unlockAchievement("firstblood");
+   if(player.level>=10)unlockAchievement("level10");
+   const mat=Math.random();
+   if(mat<.28)crafting.iron++;
+   else if(mat<.50)crafting.wood++;
+   else if(mat<.62)crafting.crystal++;
+   else if(mat<.70)crafting.essence++;
+   if(this.isBoss && Math.random()<.18 && pets.length<3){
+     const names=["Voidling","Bone Sprite","Ember Wisp"];const p={name:names[pets.length],bonus:"+5% damage"};
+     pets.push(p);localStorage.setItem("oakhaven_pets",JSON.stringify(pets));toast("Pet egg hatched: "+p.name+"!");}
+   if(Math.random()<.01){unlockAchievement("legendary");}
+   dungeonKill();
+ }
+};
+
+/* Replace inventory UI with comparison information. */
+const _oldInventoryUI=updateInventoryUI;
+updateInventoryUI=function(){
+ _oldInventoryUI();
+ document.querySelectorAll(".inv-item").forEach((div,idx)=>{
+   const item=player.inventory[idx];
+   if(item) div.title=equipmentCompare(item);
+ });
+};
+
+/* Boss bar */
+function updateBossBar(){
+ const boss=mobs.find(m=>m.zone===currentZone&&m.isBoss&&m.alive);
+ const bar=document.getElementById("boss-bar");
+ if(!boss){bar.style.display="none";return;}
+ bar.style.display="block";document.getElementById("boss-name").innerText=boss.name+" Lv."+boss.level;
+ document.getElementById("boss-fill").style.width=Math.max(0,boss.hp/boss.maxHp*100)+"%";
+}
+const _oldDraw=draw;
+draw=function(){_oldDraw();updateBossBar();};
+
+/* Keyboard shortcuts for new systems */
+window.addEventListener("keydown",e=>{
+ if(e.repeat)return;
+ if(e.key==="l"||e.key==="L")showJobs();
+ if(e.key==="g"||e.key==="G")showAdvancedLore();
+ if(e.key==="a"||e.key==="A")showAchievements();
+ if(e.key==="o"||e.key==="O")showSave();
+ if(e.key==="b"||e.key==="B")showCrafting();
+ if(e.key==="p"||e.key==="P")showPets();
+ if(e.key==="m"||e.key==="M")showMounts();
+ if(e.key==="d"||e.key==="D")showDungeon();
+ if(e.key==="Escape")closeRPGPanel();
+});
+
+/* Make job abilities actually different, using the existing skill framework. */
+const _oldUseSkill=useSkill;
+useSkill=function(key){
+ const job=player.baseJob||"Warrior";
+ if(key==="W"&&job==="Necromancer"){
+   const pet={name:"Skeleton Minion",bonus:"Summoned undead ally"};pets.push(pet);toast("Skeleton summoned!");
+ }
+ if(key==="R"&&job==="Mage"){
+   performAreaDamage(360,player.atk*8,"#ffd700");toast("SUNFALL!");
+ }
+ if(key==="E"&&job==="Rogue"){player.speed+=1.5;setTimeout(()=>player.speed-=1.5,4000);}
+ if(key==="R"&&job==="Archer"){performAreaDamage(450,player.atk*6,"#74b9ff");}
+ if(key==="R"&&job==="Priest"){player.hp=player.maxHp;performAreaDamage(300,player.atk*5,"#fff");}
+ if(key==="R"&&job==="Tank"){player.hp=Math.min(player.maxHp,player.hp+player.maxHp*.5);performAreaDamage(220,player.atk*3,"#74b9ff");}
+ if(key==="R"&&job==="Paladin"){player.hp=player.maxHp;performAreaDamage(300,player.atk*6,"#ffd700");}
+ if(key==="R"&&job==="Druid"){performAreaDamage(330,player.atk*5,"#55efc4");}
+ if(key==="R"&&job==="Bard"){performAreaDamage(280,player.atk*4,"#a29bfe");}
+ if(key==="R"&&job==="Warrior"){performAreaDamage(280,player.atk*5,"#ffd700");}
+ if(key==="R"&&job==="Rogue"){performAreaDamage(240,player.atk*6,"#a29bfe");}
+ if(key==="R"&&job==="Necromancer"){performAreaDamage(320,player.atk*7,"#8e44ad");}
+ _oldUseSkill(key);
+};
+
+/* Start with a small welcome hint. */
+setTimeout(()=>toast("New systems: L Jobs • A Achievements • B Craft • D Dungeon • M Mounts • P Pets"),900);
+</script>
+
+<script>
+const canvas=document.getElementById("gameCanvas"),ctx=canvas.getContext("2d");
+const WORLD_WIDTH=2500,HEIGHT=400;
+let cameraX=0,tick=0,paused=false;
+const keys={};
+const panelIds=["stat-window","inventory-window","quest-window","skill-window","shop-box","class-select-box","character-box","pause-box"];
+
+const BASE_JOBS={
+Warrior:{str:15,dex:8,int:4,vit:14,passive:"Rage"},
+Rogue:{str:8,dex:18,int:6,vit:8,passive:"Swiftness"},
+Tank:{str:10,dex:6,int:4,vit:20,passive:"Thorns"},
+Mage:{str:4,dex:8,int:20,vit:6,passive:"Arcane"},
+Archer:{str:6,dex:19,int:7,vit:7,passive:"Eagle Eye"},
+Priest:{str:6,dex:6,int:16,vit:12,passive:"Blessing"},
+Bard:{str:6,dex:12,int:14,vit:8,passive:"Tempo"},
+Druid:{str:10,dex:10,int:12,vit:12,passive:"Nature"},
+Necromancer:{str:5,dex:7,int:18,vit:8,passive:"Soul Harvest"},
+Paladin:{str:12,dex:6,int:10,vit:16,passive:"Aegis"}
+};
+const ADVANCED_JOBS={};
+Object.keys(BASE_JOBS).forEach(j=>ADVANCED_JOBS[j]=["Berserker","Warlord","Gladiator","Assassin","Guardian"].map(x=>x+" "+j));
+const SUPREMACY_PREFIXES=["Omni","Void","Celestial","Prime","Eternal"];
+
+const ZONES=[
+{name:"Oakhaven Town",req:"Talk to Elder Eldrin",tier:0,state:"NOT_STARTED"},
+{name:"Whispering Swamp",req:"Reach Lv10, choose a Base Job, defeat 8 Slimes",tier:1,kills:0,target:8,state:"LOCKED"},
+{name:"Ashen Caverns",req:"Reach Lv25, choose an Advanced Job, defeat 10 Skeletons",tier:2,kills:0,target:10,state:"LOCKED"},
+{name:"Dragon's Peak",req:"Reach Lv40, choose a Supremacy Job, defeat 3 VOID TITANS",tier:3,kills:0,target:3,state:"LOCKED"}
+];
+
+const RARITIES=[
+{name:"Common",chance:.60,mult:1},
+{name:"Uncommon",chance:.25,mult:1.3},
+{name:"Rare",chance:.10,mult:1.7},
+{name:"Epic",chance:.04,mult:2.2},
+{name:"Legendary",chance:.01,mult:3}
+];
+const SKILLS={Q:{name:"Arc Strike",cost:1,desc:"100-range attack."},W:{name:"Void Blast",cost:2,desc:"160-range heavy attack."},E:{name:"Recovery",cost:1,desc:"Restore HP."},R:{name:"Ultimate",cost:4,desc:"Massive 250-range attack."}};
+
+const player={
+name:"Hero",x:100,y:220,width:32,height:40,speed:3.5,baseSpeed:3.5,
+hp:100,maxHp:100,level:1,xp:0,xpToNext:50,maxLevel:50,gold:0,
+job:"Novice",jobTier:0,baseJob:"",advancedJob:"",supremacyJob:"",
+str:5,dex:5,int:5,vit:5,points:0,atk:12,def:2,crit:5,passive:"None",
+attackCooldown:0,attackTimer:0,isAttacking:false,facing:"right",
+cooldowns:{Q:0,W:0,E:0,R:0},maxCooldowns:{Q:120,W:240,E:360,R:720},
+skillRanks:{Q:1,W:1,E:1,R:0},skillPoints:0,
+inventory:[],equipment:{Weapon:null,Armor:null,Accessory:null}
+};
+
+const smithQuest={active:false,completed:false,current:0,target:5};
+let currentZone=0,dialogueNPC=null,dialogueLines=[],dialogueIndex=0;
+
+function rarityClass(r){return r.toLowerCase()}
+function toast(msg){
+const el=document.getElementById("toast");el.textContent=msg;el.style.display="block";
+clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.style.display="none",1800);
+}
+function closePanels(){panelIds.forEach(id=>document.getElementById(id).style.display="none");dialogueNPC=null;dialogueLines=[];document.getElementById("dialogue-box").style.display="none"}
+function openPanel(id){closePanels();document.getElementById(id).style.display="block"}
+
+function generateLootDrop(level,guaranteed=false){
+let roll=Math.random(),sum=0,rar=RARITIES[0];
+for(const r of RARITIES){sum+=r.chance;if(roll<=sum){rar=r;break}}
+if(guaranteed)rar=RARITIES[3];
+const types=["Weapon","Armor","Accessory"],type=types[Math.floor(Math.random()*types.length)];
+const itemLevel=Math.max(1,level+Math.floor(Math.random()*3)-1);
+const stat=Math.floor((itemLevel*2+6)*rar.mult);
+return{id:crypto.randomUUID?crypto.randomUUID():Math.random(),name:`${rar.name} Lv.${itemLevel} ${type}`,type,level:itemLevel,rarity:rar.name,stat};
+}
+function equipItem(item){
+if(player.equipment[item.type])player.inventory.push(player.equipment[item.type]);
+player.equipment[item.type]=item;
+player.inventory=player.inventory.filter(i=>i.id!==item.id);
+recalculateStats();updateAll();toast(`Equipped ${item.name}`);
+}
+function recalculateStats(){
+let atk=player.str*2+player.dex,def=Math.floor(player.vit/2),hpBonus=0;
+for(const type of ["Weapon","Armor","Accessory"]){
+const i=player.equipment[type];if(!i)continue;
+if(type==="Weapon")atk+=i.stat;
+if(type==="Armor")def+=i.stat;
+if(type==="Accessory")hpBonus+=i.stat*5;
+}
+const oldMax=player.maxHp;
+player.maxHp=100+player.vit*10+hpBonus+Math.max(0,(player.level-1)*15);
+player.hp=Math.min(player.maxHp,player.hp+(player.maxHp-oldMax>0?player.maxHp-oldMax:0));
+player.atk=atk;player.def=def;
+player.crit=5+Math.floor(player.dex/10)+(player.job==="Archer"?10:0);
+player.baseSpeed=3.5+(player.job==="Rogue"?1:0);
+player.speed=player.baseSpeed;
+}
+function addXP(amount){
+if(player.level>=player.maxLevel)return;
+player.xp+=amount;
+while(player.xp>=player.xpToNext&&player.level<player.maxLevel){
+player.xp-=player.xpToNext;player.level++;player.points+=5;player.skillPoints++;
+player.xpToNext=Math.floor(50*Math.pow(1.22,player.level-1));
+recalculateStats();player.hp=player.maxHp;
+toast(`LEVEL UP! Level ${player.level} • +5 Attribute Points`);
+if(player.level===10&&!player.baseJob)promptBasicJobSelection();
+if(player.level===25&&player.baseJob&&!player.advancedJob)promptAdvancedJobSelection();
+if(player.level===40&&player.advancedJob&&!player.supremacyJob)promptSupremacyJobSelection();
+}
+updateAll();
+}
+function spendPoint(stat){
+if(player.points<=0)return;
+player[stat]++;player.points--;recalculateStats();updateAll();
+}
+function upgradeSkill(k){
+const s=player.skillRanks[k];
+if(player.skillPoints<=0||s>=5){toast("Cannot upgrade that skill.");return}
+player.skillRanks[k]++;player.skillPoints--;toast(`${SKILLS[k].name} upgraded to Lv.${player.skillRanks[k]}`);updateAll();
+}
+
+function selectJob(name,tier){
+if(tier==="base"){
+player.baseJob=name;player.job=name;player.jobTier=1;
+const s=BASE_JOBS[name];player.str=s.str;player.dex=s.dex;player.int=s.int;player.vit=s.vit;player.passive=s.passive;
+toast(`${name} selected!`);
+}else if(tier==="advanced"){
+player.advancedJob=name;player.job=name;player.jobTier=2;
+player.str+=10;player.dex+=10;player.int+=10;player.vit+=10;toast(`${name} selected!`);
+}else{
+player.supremacyJob=name;player.job=name;player.jobTier=3;
+player.str+=20;player.dex+=20;player.int+=20;player.vit+=20;player.passive="Supremacy Aura";toast(`${name} unlocked!`);
+}
+recalculateStats();closePanels();updateAll();
+}
+function promptBasicJobSelection(){
+openPanel("class-select-box");document.getElementById("class-select-title").textContent="Choose Base Job • Level 10";
+const o=document.getElementById("class-options");o.innerHTML="";
+for(const [name,s] of Object.entries(BASE_JOBS)){
+const b=document.createElement("button");b.style.width="100%";b.style.margin="4px 0";b.textContent=`${name} • STR ${s.str} DEX ${s.dex} INT ${s.int} VIT ${s.vit} • ${s.passive}`;
+b.onclick=()=>selectJob(name,"base");o.appendChild(b);
+}}
+function promptAdvancedJobSelection(){
+openPanel("class-select-box");document.getElementById("class-select-title").textContent="Choose Advanced Job • Level 25";
+const o=document.getElementById("class-options");o.innerHTML="";
+ADVANCED_JOBS[player.baseJob].forEach(name=>{const b=document.createElement("button");b.style.width="100%";b.style.margin="4px 0";b.textContent=name;b.onclick=()=>selectJob(name,"advanced");o.appendChild(b)});
+}
+function promptSupremacyJobSelection(){
+openPanel("class-select-box");document.getElementById("class-select-title").textContent="Choose Supremacy Job • Level 40";
+const o=document.getElementById("class-options");o.innerHTML="";
+SUPREMACY_PREFIXES.map(p=>`${p} ${player.advancedJob}`).forEach(name=>{const b=document.createElement("button");b.style.width="100%";b.style.margin="4px 0";b.textContent=name;b.onclick=()=>selectJob(name,"supremacy");o.appendChild(b)});
+}
+
+function useSkill(k){
+if(player.cooldowns[k]>0)return;
+const rank=player.skillRanks[k];
+if(k==="R"&&rank===0){toast("Unlock Ultimate with Skill Points.");return}
+const mult={Q:1.2,W:1.8,E:0,R:4}[k]*(1+(rank-1)*.18);
+player.cooldowns[k]=Math.max(30,player.maxCooldowns[k]*(1-(player.job==="Mage"?.15:0)));
+player.isAttacking=true;player.attackTimer=15;
+if(k==="E"){player.hp=Math.min(player.maxHp,player.hp+50+player.int*2+rank*10);toast("Recovery!");return}
+performAreaDamage({Q:100,W:160,R:250}[k],player.atk*mult,k==="R"?"#ffd700":k==="W"?"#ab47bc":"#66fcf1");
+}
+function performAreaDamage(range,damage,color){
+mobs.filter(m=>m.zone===currentZone&&m.alive).forEach(m=>{
+const d=Math.hypot(player.x+16-(m.x+m.width/2),player.y+20-(m.y+m.height/2));
+if(d<=range)m.takeDamage(damage);
+});
+spawnParticles(player.x+16,player.y+20,color,18);
+}
+function melee(){
+if(player.attackCooldown>0)return;
+player.attackCooldown=18;player.isAttacking=true;player.attackTimer=12;
+const box={x:player.facing==="right"?player.x+player.width:player.x-40,y:player.y,w:40,h:40};
+mobs.filter(m=>m.zone===currentZone&&m.alive).forEach(m=>{
+if(box.x<m.x+m.width&&box.x+box.w>m.x&&box.y<m.y+m.height&&box.y+box.h>m.y){
+let dmg=player.atk;if(Math.random()*100<player.crit)dmg*=2;m.takeDamage(dmg);spawnParticles(m.x+16,m.y+20,"#ffd700",8);
+}});
+}
+function ranged(){
+if(player.attackCooldown>0)return;
+player.attackCooldown=24;player.isAttacking=true;player.attackTimer=10;
+projectiles.push(new Projectile(player.x+16,player.y+20,player.facing==="right"?8:-8,false,player.atk*.8,"#66fcf1",currentZone));
+}
+
+class Projectile{
+constructor(x,y,vx,isEnemy,damage,color,zone){Object.assign(this,{x,y,vx,isEnemy,damage,color,zone,alive:true})}
+update(){
+if(this.zone!==currentZone){this.alive=false;return}
+this.x+=this.vx;
+if(this.x<0||this.x>WORLD_WIDTH){this.alive=false;return}
+if(this.isEnemy){
+if(Math.hypot(player.x+16-this.x,player.y+20-this.y)<22){player.hp=Math.max(0,player.hp-Math.max(1,this.damage-player.def));this.alive=false;updateUI()}}
+else for(const m of mobs.filter(m=>m.zone===currentZone&&m.alive)){
+if(Math.hypot(m.x+m.width/2-this.x,m.y+m.height/2-this.y)<22){m.takeDamage(this.damage);this.alive=false;break}}
+}
+draw(){ctx.fillStyle=this.color;ctx.beginPath();ctx.arc(this.x-cameraX,this.y,6,0,Math.PI*2);ctx.fill()}
+}
+
+class Mob{
+constructor(name,type,zone,minX,maxX,y,hp,atk,xp,gold,ranged=false,boss=false,level=1){
+Object.assign(this,{name,type,zone,minX,maxX,y,level,isRanged:ranged,isBoss:boss,alive:true,vx:1.1,respawn:0,shoot:0,anim:0});
+this.x=minX+Math.random()*Math.max(1,maxX-minX-40);this.width=boss?48:32;this.height=boss?48:40;
+const scale=1+this.x/WORLD_WIDTH*.55;this.maxHp=Math.floor(hp*scale);this.hp=this.maxHp;this.atk=Math.floor(atk*scale);this.xpYield=Math.floor(xp*scale);this.goldYield=Math.floor(gold*scale);this.aggro=boss?500:300;
+}
+update(){
+if(this.zone!==currentZone)return;
+if(!this.alive){if(--this.respawn<=0){this.alive=true;this.hp=this.maxHp}return}
+this.anim++;
+const dx=player.x+16-(this.x+this.width/2),dy=player.y+20-(this.y+this.height/2),dist=Math.hypot(dx,dy);
+if(dist<this.aggro){this.x+=dx/dist*(this.isBoss?1.0:1.45);this.y+=dy/dist*(this.isBoss?1.0:1.45)}
+else{this.x+=this.vx;if(this.x<=this.minX||this.x>=this.maxX-this.width)this.vx*=-1}
+if(this.isRanged&&++this.shoot>110){this.shoot=0;projectiles.push(new Projectile(this.x+16,this.y+16,player.x<this.x?-5:5,true,this.atk,"#ff2d6f",this.zone))}
+if(dist<25)player.hp=Math.max(0,player.hp-this.atk*.025);
+}
+takeDamage(dmg){
+if(!this.alive)return;this.hp-=dmg;spawnDamage(this.x+16,this.y,Math.floor(dmg));
+if(this.hp<=0){
+this.alive=false;this.respawn=240;addXP(this.xpYield);player.gold+=this.goldYield;
+if(Math.random()<.45){const item=generateLootDrop(this.level);player.inventory.push(item);toast(`Loot: ${item.name}`)}
+if(smithQuest.active&&!smithQuest.completed&&this.zone===1&&Math.random()<.3){smithQuest.current=Math.min(smithQuest.target,smithQuest.current+1);toast(`Goblin Iron ${smithQuest.current}/${smithQuest.target}`)}
+const z=ZONES[this.zone];if(z.kills!==undefined&&z.state==="IN_PROGRESS"&&player.jobTier>=z.tier){z.kills++;if(z.kills>=z.target)z.state="READY_TO_TURN_IN"}
+updateAll();
+}}
+draw(){
+if(this.zone!==currentZone||!this.alive)return;
+drawSprite(this.x,this.y,this.type,this.anim);
+ctx.fillStyle="#000a";ctx.fillRect(this.x-cameraX,this.y-12,this.width,4);ctx.fillStyle="#e63946";ctx.fillRect(this.x-cameraX,this.y-12,this.width*(this.hp/this.maxHp),4);
+ctx.fillStyle="#ffd700";ctx.font="9px sans-serif";ctx.textAlign="center";ctx.fillText(`Lv.${this.level}`,this.x+this.width/2-cameraX,this.y-15);
+}
+}
+
+const mobs=[
+new Mob("Swamp Slime","slime",1,200,600,150,70,10,25,20,false,false,3),
+new Mob("Swamp Slime","slime",1,600,1000,220,110,14,35,25,false,false,5),
+new Mob("Swamp Slime","slime",1,1000,1500,290,150,18,50,35,false,false,8),
+new Mob("Elder Slime","slime",1,1500,2200,200,220,24,80,50,false,false,12),
+new Mob("Cave Skeleton","skeleton",2,200,800,160,180,22,90,50,false,false,15),
+new Mob("Cave Skeleton","skeleton",2,800,1400,240,240,28,120,65,false,false,18),
+new Mob("Armored Skeleton","skeleton",2,1400,2000,320,320,35,160,85,false,false,22),
+new Mob("Cave Drake","drake",2,1000,2200,200,400,42,220,120,true,false,25),
+new Mob("VOID TITAN","boss",3,500,1000,180,850,55,500,350,true,true,35),
+new Mob("VOID TITAN","boss",3,1100,1600,220,1100,68,650,450,true,true,40),
+new Mob("VOID TITAN","boss",3,1700,2300,180,1400,82,850,600,true,true,45)
+];
+
+const npcs=[
+{name:"Elder Eldrin",type:"elder",zone:0,x:180,y:200},
+{name:"Blacksmith Bruno",type:"smith",zone:0,x:320,y:260}
+];
+
+function interact(){
+if(dialogueNPC){advanceDialogue();return}
+const npc=npcs.find(n=>n.zone===currentZone&&Math.hypot(player.x+16-(n.x+16),player.y+20-(n.y+20))<55);
+if(!npc)return;
+dialogueNPC=npc;dialogueIndex=0;
+if(npc.name==="Elder Eldrin"){
+if(ZONES[0].state==="NOT_STARTED")dialogueLines=["Welcome to Oakhaven, hero.","The swamp is overrun with slimes. Clear it and prove yourself.","Return here when the objective is complete."];
+else if(ZONES[1].state==="READY_TO_TURN_IN")dialogueLines=["Excellent work.","The Ashen Caverns are open. Prepare for stronger enemies."];
+else if(ZONES[2].state==="READY_TO_TURN_IN")dialogueLines=["The skeleton threat is gone.","Dragon's Peak is open. Only the Void Titans remain."];
+else if(ZONES[3].state==="READY_TO_TURN_IN")dialogueLines=["You defeated the Void Titans.","Oakhaven will remember your name. You have conquered the current campaign."];
+else dialogueLines=["Keep pushing forward. Your next adventure is waiting."];
+}else{
+if(!smithQuest.active&&!smithQuest.completed)dialogueLines=["I need materials for a special weapon.","Bring me five Crushed Goblin Iron from swamp enemies and I will reward you."];
+else if(smithQuest.current<smithQuest.target)dialogueLines=[`You have ${smithQuest.current}/${smithQuest.target} Goblin Iron. Keep hunting.`];
+else dialogueLines=["Perfect! The forge is ready.","Take this Epic Forge Hammer and 150 gold."];
+}
+document.getElementById("dialogue-name").textContent=npc.name;document.getElementById("dialogue-text").textContent=dialogueLines[0];document.getElementById("dialogue-box").style.display="block";
+}
+function advanceDialogue(){
+dialogueIndex++;
+if(dialogueIndex<dialogueLines.length){document.getElementById("dialogue-text").textContent=dialogueLines[dialogueIndex];return}
+if(dialogueNPC.name==="Elder Eldrin"){
+if(ZONES[0].state==="NOT_STARTED"){ZONES[0].state="COMPLETED";ZONES[1].state="IN_PROGRESS";toast("Whispering Swamp unlocked!")}
+else if(ZONES[1].state==="READY_TO_TURN_IN"){ZONES[1].state="COMPLETED";ZONES[2].state="IN_PROGRESS";toast("Ashen Caverns unlocked!")}
+else if(ZONES[2].state==="READY_TO_TURN_IN"){ZONES[2].state="COMPLETED";ZONES[3].state="IN_PROGRESS";toast("Dragon's Peak unlocked!")}
+else if(ZONES[3].state==="READY_TO_TURN_IN"){ZONES[3].state="COMPLETED";toast("CAMPAIGN COMPLETE!")}
+}else{
+if(!smithQuest.active&&!smithQuest.completed){smithQuest.active=true;toast("Blacksmith quest started!")}
+else if(smithQuest.current>=smithQuest.target&&!smithQuest.completed){smithQuest.completed=true;player.gold+=150;player.inventory.push({id:Math.random(),name:"Epic Forge Hammer",type:"Weapon",level:10,rarity:"Epic",stat:35});toast("Quest complete! +150G + Epic Weapon")}
+else if(smithQuest.completed)openShop();
+}
+dialogueNPC=null;document.getElementById("dialogue-box").style.display="none";updateAll();
+}
+
+function changeZone(dir){
+const z=ZONES[currentZone];
+if(dir>0&&z.state==="COMPLETED"&&currentZone<3){currentZone++;player.x=50;player.y=200;toast(`Entered ${ZONES[currentZone].name}`)}
+else if(dir<0&&z.state==="READY_TO_TURN_IN"&&currentZone>0){currentZone=0;player.x=100;player.y=220;toast("Returned to Oakhaven")}
+}
+function updateQuestUI(){
+const list=document.getElementById("quest-list");list.innerHTML="";
+ZONES.forEach((z,i)=>{const d=document.createElement("div");d.className="row";d.innerHTML=`<span><b>${z.name}</b><br>${z.req}${z.kills!==undefined?`<br>Progress: ${z.kills}/${z.target}`:""}</span><span>${z.state}</span>`;list.appendChild(d)});
+const s=document.createElement("div");s.className="row";s.innerHTML=`<span><b>Blacksmith Contract</b><br>Goblin Iron: ${smithQuest.current}/${smithQuest.target}</span><span>${smithQuest.completed?"DONE":smithQuest.active?"ACTIVE":"LOCKED"}</span>`;list.appendChild(s);
+}
+function updateInventoryUI(){
+const list=document.getElementById("inventory-list");list.innerHTML=player.inventory.length? "":"<div style='color:#888'>Inventory Empty</div>";
+player.inventory.forEach(item=>{const d=document.createElement("div");d.className="row inv-item";d.innerHTML=`<span class="${rarityClass(item.rarity)}">${item.name}</span><span>+${item.stat}</span>`;d.onclick=()=>equipItem(item);list.appendChild(d)});
+}
+function updateSkillUI(){
+const list=document.getElementById("skill-list");list.innerHTML=`<div>Skill Points: <b>${player.skillPoints}</b></div>`;
+Object.entries(SKILLS).forEach(([k,s])=>{const d=document.createElement("div");d.className="row";d.innerHTML=`<span><b>${k} — ${s.name}</b><br>${s.desc}<br>Rank: ${player.skillRanks[k]}/5</span><button onclick="upgradeSkill('${k}')">Upgrade</button>`;list.appendChild(d)});
+}
+function updateStatWindow(){
+const ids={job:player.job,level:player.level,points:player.points,str:player.str,dex:player.dex,int:player.int,vit:player.vit,atk:player.atk,def:player.def,crit:player.crit,speed:player.speed.toFixed(1)};
+for(const [k,v] of Object.entries(ids))document.getElementById("st-"+k).textContent=v;
+for(const t of ["Weapon","Armor","Accessory"])document.getElementById("eq-"+t.toLowerCase()).textContent=player.equipment[t]?.name||"None";
+}
+function updateUI(){
+document.getElementById("zone-display").textContent=ZONES[currentZone].name;
+document.getElementById("job-display").textContent=player.job;
+document.getElementById("level-display").textContent=player.level;
+document.getElementById("hp-display").textContent=`${Math.ceil(player.hp)}/${player.maxHp}`;
+document.getElementById("xp-display").textContent=`${player.xp}/${player.xpToNext}`;
+document.getElementById("gold-display").textContent=player.gold;
+const z=ZONES[currentZone];
+document.getElementById("quest-display").textContent=z.kills!==undefined?`${z.name}: ${z.kills}/${z.target}`:z.req;
+updateStatWindow();updateInventoryUI();updateQuestUI();updateSkillUI();
+}
+function updateAll(){updateUI()}
+
+function buy(kind){
+const items={potion:{cost:25,fn:()=>player.hp=Math.min(player.maxHp,player.hp+60)},sword:{cost:60,fn:()=>player.inventory.push({id:Math.random(),name:"Iron Longsword",type:"Weapon",level:5,rarity:"Uncommon",stat:8})},armor:{cost:80,fn:()=>player.inventory.push({id:Math.random(),name:"Iron Armor",type:"Armor",level:5,rarity:"Uncommon",stat:7})}};
+const x=items[kind];if(player.gold<x.cost){toast("Not enough gold.");return}player.gold-=x.cost;x.fn();updateAll();toast("Purchased!");renderShop();
+}
+function renderShop(){document.getElementById("shop-items").innerHTML=`
+<div class="row"><span>Health Potion • Restore 60 HP</span><button onclick="buy('potion')">25 G</button></div>
+<div class="row"><span>Iron Longsword • +8 ATK</span><button onclick="buy('sword')">60 G</button></div>
+<div class="row"><span>Iron Armor • +7 DEF</span><button onclick="buy('armor')">80 G</button></div>`}
+function openShop(){openPanel("shop-box");renderShop()}
+
+function applyCharacter(){
+player.name=document.getElementById("char-name").value||"Hero";
+const b=document.getElementById("char-build").value;
+player.str=player.dex=player.int=player.vit=5;
+if(b==="power"){player.str=9;player.vit=7}
+if(b==="speed"){player.dex=10;player.str=6}
+if(b==="magic"){player.int=10;player.dex=6}
+if(b==="tank"){player.vit=10;player.str=7}
+player.hp=player.maxHp=100;recalculateStats();closePanels();toast(`Welcome, ${player.name}!`);updateAll();
+}
+
+function togglePause(){paused=!paused;document.getElementById("pause-box").style.display=paused?"block":"none"}
+function resetGame(){location.reload()}
+
+function spawnDamage(x,y,a,color="#ff5c69"){damageNumbers.push({x,y,a,color,life:45})}
+const projectiles=[],particles=[],damageNumbers=[];
+function spawnParticles(x,y,color,n=6){for(let i=0;i<n;i++)particles.push({x,y,vx:(Math.random()-.5)*4,vy:(Math.random()-.5)*4,color,life:18,size:2+Math.random()*3})}
+
+function drawSprite(x,y,type,a=0){
+const sx=x-cameraX;
+ctx.save();ctx.translate(sx,y);
+ctx.fillStyle="#0005";ctx.beginPath();ctx.ellipse(16,type==="boss"?48:38,type==="boss"?24:12,4,0,0,Math.PI*2);ctx.fill();
+if(type==="player"){
+ctx.fillStyle="#1d3557";ctx.fillRect(8,28,6,10);ctx.fillRect(18,28,6,10);
+ctx.fillStyle="#457b9d";ctx.fillRect(6,14,20,14);ctx.fillStyle="#f1faee";ctx.fillRect(8,2,16,12);
+ctx.fillStyle="#e63946";ctx.fillRect(6,0,20,5);ctx.fillStyle="#111";ctx.fillRect(player.facing==="right"?18:10,6,3,3);
+if(player.isAttacking){ctx.strokeStyle="#66fcf1";ctx.lineWidth=4;ctx.beginPath();ctx.arc(player.facing==="right"?28:4,18,20,player.facing==="right"?-.9:2.2,player.facing==="right"?.9:4.1);ctx.stroke()}
+}else if(type==="elder"){ctx.fillStyle="#4a148c";ctx.fillRect(6,10,20,26);ctx.fillStyle="#ffd54f";ctx.fillRect(10,10,12,26);ctx.fillStyle="#ffcc80";ctx.fillRect(10,4,12,8);ctx.fillStyle="#fff";ctx.fillRect(8,10,16,12)}
+else if(type==="smith"){ctx.fillStyle="#37474f";ctx.fillRect(8,14,16,22);ctx.fillStyle="#bf360c";ctx.fillRect(8,18,16,14);ctx.fillStyle="#ffcc80";ctx.fillRect(10,4,12,10)}
+else if(type==="slime"){ctx.fillStyle="#2a9d8f";ctx.beginPath();ctx.ellipse(16,20+Math.sin(a*.2),14,10,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#fff";ctx.fillRect(10,16,3,4);ctx.fillRect(18,16,3,4)}
+else if(type==="skeleton"){ctx.fillStyle="#e0e0e0";ctx.fillRect(12,4,8,8);ctx.fillRect(14,12,4,14);ctx.fillRect(8,14,16,3);ctx.fillRect(10,26,4,10);ctx.fillRect(18,26,4,10)}
+else if(type==="drake"){ctx.fillStyle="#d90429";ctx.fillRect(8,12,16,18);ctx.fillStyle="#ef233c";ctx.beginPath();ctx.moveTo(8,14);ctx.lineTo(-4,4+Math.sin(a*.3)*6);ctx.lineTo(8,20);ctx.fill();ctx.beginPath();ctx.moveTo(24,14);ctx.lineTo(36,4+Math.sin(a*.3)*6);ctx.lineTo(24,20);ctx.fill()}
+else if(type==="boss"){ctx.fillStyle="#2b2d42";ctx.fillRect(4,8,40,40);ctx.fillStyle="#8d99ae";ctx.fillRect(10,14,28,28);ctx.fillStyle="#d90429";ctx.fillRect(18,20,12,12)}
+ctx.restore();
+}
+function drawEnvironment(){
+const z=currentZone;
+ctx.fillStyle=["#3a5a40","#123d2b","#20252b","#10002b"][z];ctx.fillRect(0,0,canvas.width,400);
+ctx.fillStyle=["#a3b18a","#2d6a4f","#343a40","#d90429"][z];ctx.fillRect(0,z===3?80:180,canvas.width,z===3?30:60);
+if(z===0){drawHouse(60,40);drawHouse(300,30);drawHouse(550,40);drawHouse(750,240)}
+for(let i=0;i<10;i++){ctx.fillStyle="rgba(255,255,255,.04)";ctx.fillRect((i*270-cameraX)%WORLD_WIDTH,70+(i%4)*60,80,20)}
+if(ZONES[z].state==="COMPLETED"&&z<3){ctx.fillStyle="#66fcf1";ctx.beginPath();ctx.ellipse(2450-cameraX,200,25+Math.sin(tick*.05)*4,55,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#fff";ctx.font="bold 11px sans-serif";ctx.textAlign="center";ctx.fillText("NEXT ZONE",2450-cameraX,135)}
+if(ZONES[z].state==="READY_TO_TURN_IN"&&z>0){ctx.fillStyle="#ffd700";ctx.beginPath();ctx.ellipse(50-cameraX,200,25+Math.sin(tick*.05)*4,55,0,0,Math.PI*2);ctx.fill();ctx.fillStyle="#fff";ctx.font="bold 11px sans-serif";ctx.fillText("TOWN",50-cameraX,135)}
+}
+function drawHouse(x,y){ctx.fillStyle="#7f5539";ctx.fillRect(x-cameraX,y+30,80,50);ctx.fillStyle="#2b2d42";ctx.fillRect(x-cameraX+30,y+50,20,30);ctx.fillStyle="#b08968";ctx.beginPath();ctx.moveTo(x-cameraX-10,y+30);ctx.lineTo(x-cameraX+40,y);ctx.lineTo(x-cameraX+90,y+30);ctx.fill()}
+function draw(){
+ctx.clearRect(0,0,canvas.width,400);drawEnvironment();
+npcs.forEach(n=>{if(n.zone===currentZone){drawSprite(n.x,n.y,n.type,tick);ctx.fillStyle="#66fcf1";ctx.font="bold 11px sans-serif";ctx.textAlign="center";ctx.fillText(n.name,n.x+16-cameraX,n.y-8)}});
+mobs.forEach(m=>m.draw());projectiles.forEach(p=>p.draw());
+particles.forEach(p=>{ctx.fillStyle=p.color;ctx.fillRect(p.x-cameraX,p.y,p.size,p.size)});
+damageNumbers.forEach(d=>{ctx.fillStyle=d.color;ctx.font="bold 12px sans-serif";ctx.fillText(d.a,d.x-cameraX,d.y)});
+drawSprite(player.x,player.y,"player",player.animFrame||0);
+const boss=mobs.find(m=>m.zone===3&&m.alive&&m.isBoss&&Math.hypot(player.x-m.x,player.y-m.y)<650);
+document.getElementById("bossbar").style.display=boss?"block":"none";
+if(boss){document.getElementById("boss-name").textContent=`${boss.name} • Lv.${boss.level}`;document.getElementById("boss-hp").style.width=`${Math.max(0,boss.hp/boss.maxHp*100)}%`}
+}
+function update(){
+if(paused)return;
+tick++;
+if(player.attackCooldown>0)player.attackCooldown--;if(player.attackTimer>0)player.attackTimer--;else player.isAttacking=false;
+let moving=false;
+if(!dialogueNPC&&document.getElementById("shop-box").style.display!=="block"&&document.getElementById("class-select-box").style.display!=="block"){
+if(keys.ArrowRight||keys.d){player.x+=player.speed;player.facing="right";moving=true}
+if(keys.ArrowLeft||keys.a){player.x-=player.speed;player.facing="left";moving=true}
+if(keys.ArrowUp||keys.w){player.y-=player.speed;moving=true}
+if(keys.ArrowDown||keys.s){player.y+=player.speed;moving=true}}
+player.animFrame=moving?Math.floor(tick/8)%4:0;
+player.x=Math.max(0,Math.min(WORLD_WIDTH-player.width,player.x));player.y=Math.max(0,Math.min(360,player.y));
+cameraX=Math.max(0,Math.min(WORLD_WIDTH-canvas.width,player.x-canvas.width/2));
+if(player.x>2400&&player.y>140&&player.y<260)changeZone(1);
+if(player.x<100&&player.y>140&&player.y<260&&ZONES[currentZone].state==="READY_TO_TURN_IN")changeZone(-1);
+Object.keys(player.cooldowns).forEach(k=>{if(player.cooldowns[k]>0)player.cooldowns[k]--;const el=document.getElementById("cd-"+k.toLowerCase());if(player.cooldowns[k]>0){el.style.display="flex";el.textContent=Math.ceil(player.cooldowns[k]/60)}else el.style.display="none"});
+mobs.forEach(m=>m.update());projectiles.forEach(p=>p.update());
+for(let i=projectiles.length-1;i>=0;i--)if(!projectiles[i].alive)projectiles.splice(i,1);
+for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0)particles.splice(i,1)}
+for(let i=damageNumbers.length-1;i>=0;i--){const d=damageNumbers[i];d.y-=.5;d.life--;if(d.life<=0)damageNumbers.splice(i,1)}
+if(player.hp<=0){player.hp=player.maxHp;player.x=100;player.y=220;player.gold=Math.floor(player.gold*.9);toast("You were defeated! Lost 10% gold.")}
+}
+window.addEventListener("keydown",e=>{
+if(["ArrowUp","ArrowDown","ArrowLeft","ArrowRight"," "].includes(e.key))e.preventDefault();
+keys[e.key]=true;
+const k=e.key.toLowerCase();
+if(k==="j")melee();if(k==="k")ranged();if(["q","w","e","r"].includes(k))useSkill(k.toUpperCase());
+if(k==="f"||e.key===" ")interact();
+if(k==="c")openPanel("stat-window");if(k==="i")openPanel("inventory-window");if(k==="l")openPanel("quest-window");if(k==="t")openPanel("skill-window");if(k==="v")openPanel("character-box");
+if(k==="escape"){if(paused)togglePause();else togglePause()}
+});
+window.addEventListener("keyup",e=>keys[e.key]=false);
+
+recalculateStats();updateAll();setInterval(()=>{if(!paused){update();draw()}},1000/60);
+</script>
+
+<script>
+/* ===== CLASS SYSTEM OVERHAUL =====
+   Every Base, Advanced, and Supremacy Job now has its own identity,
+   four abilities, passive, lore, upgrade scaling, and ultimate effect.
+*/
+Object.assign(BASE_JOBS,{
+  Warrior:{str:15,dex:8,int:4,vit:14,passive:"Rage",lore:"Warriors are frontline champions who turn discipline, strength, and fury into overwhelming melee pressure."},
+  Rogue:{str:8,dex:18,int:6,vit:8,passive:"Swiftness",lore:"Rogues are elusive assassins who rely on speed, critical strikes, poison, and perfectly timed escapes."},
+  Tank:{str:10,dex:6,int:4,vit:20,passive:"Thorns",lore:"Tanks are living fortresses. They absorb punishment, control enemies, and protect the battlefield."},
+  Mage:{str:4,dex:8,int:20,vit:6,passive:"Arcane",lore:"Mages manipulate raw arcane energy, specializing in devastating area spells and battlefield control."},
+  Archer:{str:6,dex:19,int:7,vit:7,passive:"Eagle Eye",lore:"Archers are patient hunters who turn distance, precision, and critical hits into deadly advantages."},
+  Priest:{str:6,dex:6,int:16,vit:12,passive:"Blessing",lore:"Priests channel sacred power to heal allies, weaken enemies, and call down divine judgment."},
+  Bard:{str:6,dex:12,int:14,vit:8,passive:"Tempo",lore:"Bards transform music into magic, empowering themselves while disrupting enemies with sonic attacks."},
+  Druid:{str:10,dex:10,int:12,vit:12,passive:"Nature",lore:"Druids command the forces of nature, shifting between healing, beasts, roots, storms, and ancient wrath."},
+  Necromancer:{str:5,dex:7,int:18,vit:8,passive:"Soul Harvest",lore:"Necromancers turn fallen enemies into power, commanding undead servants and draining life from their foes."},
+  Paladin:{str:12,dex:6,int:10,vit:16,passive:"Aegis",lore:"Paladins combine martial skill and holy magic, standing as radiant guardians against darkness."}
+});
+
+Object.assign(ADVANCED_JOBS,{
+ Warrior:["Berserker","Warlord","Gladiator","Dreadnought","Champion"],
+ Rogue:["Assassin","Shadowblade","Trickster","Corsair","Nightstalker"],
+ Tank:["Juggernaut","Guardian","Bulwark","Ironclad","Colossus"],
+ Mage:["Archmage","Elementalist","Chronomancer","Arcanist","Sorcerer"],
+ Archer:["Sniper","Ranger","Sharpshooter","Beastmaster","Hawkeye"],
+ Priest:["High Priest","Inquisitor","Monk","Oracle","Templar"],
+ Bard:["Minstrel","Troubadour","Skald","Siren","Virtuoso"],
+ Druid:["Shapeshifter","Archdruid","Stormcaller","Wildkeeper","Bramblemancer"],
+ Necromancer:["Lich","Lord of Bones","Soulreaper","Plaguebringer","Deathknight"],
+ Paladin:["Crusader","Holy Avenger","Sunbreaker","Justicar","Divine Shield"]
+});
+
+const BASE_KITS={
+ Warrior:{passive:"Rage Engine",abilities:[
+  ["Q","Cleave","A fast 1.35x ATK melee arc."],["W","War Cry","Gain 35% ATK for 6 seconds."],
+  ["E","Second Wind","Restore 30% max HP and gain a short shield."],["R","Titan Cleave","A gigantic 5.5x ATK shockwave."]]},
+ Rogue:{passive:"Killing Intent",abilities:[
+  ["Q","Shadowstep","Blink and strike nearby enemies for 1.6x ATK."],["W","Venom Fan","Three poisoned blades for 1.15x ATK each."],
+  ["E","Vanish","Gain speed and become hard to target briefly."],["R","Assassinate","A 7x ATK execution strike with bonus crit chance."]]},
+ Tank:{passive:"Unbreakable",abilities:[
+  ["Q","Shield Bash","1.4x ATK and a heavy knockback."],["W","Fortify","Gain 70% DEF for 8 seconds."],
+  ["E","Taunt","Damage and weaken every nearby enemy."],["R","Aegis Fortress","Massive defensive field plus 4x ATK damage."]]},
+ Mage:{passive:"Arcane Mastery",abilities:[
+  ["Q","Arcane Bolt","A 1.45x ATK magical projectile."],["W","Meteor","2.6x ATK area explosion."],
+  ["E","Blink","Teleport a long distance and damage nearby enemies."],["R","Sunfall","Summon a miniature sun for a devastating 8x ATK explosion."]]},
+ Archer:{passive:"Deadeye",abilities:[
+  ["Q","Piercing Arrow","2x ATK projectile with extended range."],["W","Rain of Arrows","3x ATK area barrage."],
+  ["E","Eagle Eye","Gain 35% crit chance and 20% speed briefly."],["R","Skybreaker","A colossal 7.5x ATK charged arrow."]]},
+ Priest:{passive:"Divine Grace",abilities:[
+  ["Q","Smite","1.7x ATK holy strike."],["W","Holy Nova","2.4x ATK radial blast."],
+  ["E","Greater Heal","Restore 45% max HP and cleanse combat pressure."],["R","Divine Judgment","6.5x ATK holy area strike plus healing."]]},
+ Bard:{passive:"Perfect Tempo",abilities:[
+  ["Q","Sonic Note","1.35x ATK sonic projectile."],["W","Battle Hymn","Boost ATK and speed for 7 seconds."],
+  ["E","Encore","Refresh a portion of your cooldowns and heal."],["R","Grand Finale","A 6x ATK musical shockwave."]]},
+ Druid:{passive:"Primal Attunement",abilities:[
+  ["Q","Vine Lash","1.5x ATK nature strike."],["W","Bear Form","Gain DEF, HP recovery, and stronger melee attacks."],
+  ["E","Rejuvenation","Regenerate a large amount of HP over time."],["R","Wrath of Nature","Summon roots and a storm for 6x ATK area damage."]]},
+ Necromancer:{passive:"Soul Harvest",abilities:[
+  ["Q","Soul Bolt","1.5x ATK dark projectile that heals you."],["W","Raise Dead","Summon three skeleton allies."],
+  ["E","Life Drain","Damage nearby enemies while restoring HP."],["R","Army of the Damned","Summon an undead army and unleash a 7x ATK soul explosion."]]},
+ Paladin:{passive:"Radiant Aegis",abilities:[
+  ["Q","Radiant Strike","1.6x ATK holy melee attack."],["W","Holy Shield","Gain a powerful DEF barrier."],
+  ["E","Judgment","2.5x ATK radiant area attack and self-heal."],["R","Heaven's Wrath","7x ATK celestial strike with a giant light effect."]]}
+};
+
+const ADVANCED_KITS={
+ Berserker:["Frenzy","Bloodrush","Reckless Guard","Worldsplitter"], Warlord:["Commander's Edge","Battle Standard","Rally","War Dominion"],
+ Gladiator:["Arena Slash","Net Toss","Adrenaline","Colosseum Crusher"], Dreadnought:["Iron Charge","Fortress Stance","Overdrive","Dreadnought Impact"], Champion:["Heroic Strike","Champion's Banner","Valor","Champion's Judgment"],
+ Assassin:["Backstab","Shadow Blades","Smoke Veil","Death Mark"], Shadowblade:["Night Cut","Dark Knives","Shadowmeld","Eclipse Execution"], Trickster:["Mirror Strike","Chaos Cards","Decoy","Grand Deception"], Corsair:["Cutlass Rush","Powder Shot","Plunder","Kraken's Fortune"], Nightstalker:["Moon Fang","Night Volley","Predator's Cloak","Midnight Requiem"],
+ Juggernaut:["Crushing Charge","Stone Skin","Earthshaker","Unstoppable"], Guardian:["Guardian Bash","Ward","Protector's Call","Divine Bulwark"], Bulwark:["Wallop","Rampart","Fortress Heart","Bulwark Collapse"], Ironclad:["Steel Fist","Magnetic Guard","Reinforce","Iron Meteor"], Colossus:["Giant's Fist","Massive Frame","Titan Guard","Colossus Fall"],
+ Archmage:["Arc Lance","Astral Storm","Phase Shift","Cataclysm"], Elementalist:["Flame Burst","Frost Ring","Elemental Step","Primal Tempest"], Chronomancer:["Time Bolt","Slow Field","Rewind","Time Collapse"], Arcanist:["Rune Shot","Rune Prison","Arcane Ward","Runic Apocalypse"], Sorcerer:["Chaos Bolt","Wild Surge","Mana Shift","Reality Break"],
+ Sniper:["Headshot","Explosive Arrow","Focus","Deadeye Barrage"], Ranger:["Twin Shot","Volley","Hunter's Step","Rainmaker"], Sharpshooter:["Charged Shot","Ricochet","Perfect Aim","Starpiercer"], Beastmaster:["Companion Strike","Bestial Roar","Pack Mend","Primal Hunt"], Hawkeye:["Eagle Shot","Homing Swarm","True Sight","Eye of the Sky"],
+ "High Priest":["Sacred Ray","Mass Prayer","Sanctuary","Judgment Star"], Inquisitor:["Purifying Bolt","Chains of Faith","Absolution","Holy Verdict"], Monk:["Palm Strike","Chi Burst","Meditation","Sevenfold Fist"], Oracle:["Fate Bolt","Prophecy","Foresee","Fate's End"], Templar:["Holy Lance","Consecration","Guardian Prayer","Templar's Dawn"],
+ Minstrel:["Melody Shot","Quickstep Tune","Refrain","Royal Concert"], Troubadour:["Resonance","Power Chord","Mend Melody","Sonic Opera"], Skald:["War Chant","Viking Beat","Iron Verse","Ragnarok Song"], Siren:["Luring Note","Tidal Chord","Mesmerize","Abyssal Aria"], Virtuoso:["Masterstroke","Encore Storm","Perfect Performance","Symphony of Worlds"],
+ Shapeshifter:["Claw Swipe","Wolf Form","Predator Heal","Primal Ascension"], Archdruid:["Ancient Root","Verdant Wave","Grove Guard","Worldtree Wrath"], Stormcaller:["Thunder Bolt","Cyclone","Storm Step","Eye of the Storm"], Wildkeeper:["Thorn Shot","Nature's Ward","Wild Renewal","Guardian of the Wild"], Bramblemancer:["Bramble Burst","Briar Cage","Sap Life","Bramble Apocalypse"],
+ Lich:["Death Ray","Bone Prison","Soul Phylactery","Lich Ascension"], "Lord of Bones":["Bone Spear","Bone Wall","Bone Armor","Kingdom of Bones"], Soulreaper:["Soul Slash","Soul Chains","Soul Feast","Reaper's Dominion"], Plaguebringer:["Plague Bolt","Blight Cloud","Pestilence","World Plague"], Deathknight:["Grave Strike","Dark Armor","Death Charge","Apocalypse Rider"],
+ Crusader:["Holy Cleave","Banner of Dawn","Radiant Guard","Crusader's Comet"], "Holy Avenger":["Avenging Strike","Divine Shield","Vengeance","Avatar of Light"], Sunbreaker:["Solar Slash","Sun Ward","Solar Flare","Solar Judgment"], Justicar:["Justice Blade","Verdict Field","Balance","Final Verdict"], "Divine Shield":["Aegis Strike","Sacred Barrier","Mercy","Heaven's Citadel"]
+};
+
+const PREFIX_KIT_NAMES={
+ Omni:["Omnistrike","Omni Surge","Omni Shift","Omniverse"],
+ Void:["Void Bolt","Void Rift","Void Step","Void Collapse"],
+ Celestial:["Star Strike","Astral Guard","Celestial Step","Heavenfall"],
+ Prime:["Prime Strike","Prime Engine","Prime Shift","Prime Cataclysm"],
+ Eternal:["Eternal Edge","Eternal Ward","Eternal Renewal","Eternal End"]
+};
+
+const JOB_FAMILY={
+ Warrior:"melee",Rogue:"rogue",Tank:"tank",Mage:"magic",Archer:"ranged",Priest:"holy",Bard:"support",Druid:"nature",Necromancer:"dark",Paladin:"holy"
+};
+const advancedToBase={};
+for(const base in ADVANCED_JOBS) for(const adv of ADVANCED_JOBS[base]) advancedToBase[adv]=base;
+
+function abilityDescription(name,slot,base,tier,prefix){
+  const role=JOB_FAMILY[base]||"melee";
+  const power=tier===3?7.5:tier===2?4.8:({melee:3.2,rogue:3.4,tank:2.8,magic:4,ranged:3.6,holy:3.8,support:3.3,nature:3.7,dark:4.2}[role]||3.2);
+  const texts={
+    Q:`${name} releases a ${role}-themed signature attack dealing about ${power.toFixed(1)}x ATK.`,
+    W:`${name} creates a powerful ${role}-themed combat effect that damages enemies or empowers you.`,
+    E:`${name} uses a tactical ${role}-themed technique for mobility, defense, healing, control, or summons.`,
+    R:`${name} unleashes an ultimate-scale ${role}-themed technique dealing massive area damage and triggering a unique visual effect.`
+  };
+  return texts[slot];
+}
+function makeKit(job,tier,base,prefix){
+  let names;
+  if(tier===1) return BASE_KITS[base];
+  if(tier===2) names=ADVANCED_KITS[job]||[job+" Strike",job+" Power",job+" Technique",job+" Ultimate"];
+  else names=PREFIX_KIT_NAMES[prefix]||[prefix+" Strike",prefix+" Power",prefix+" Technique",prefix+" Ultimate"];
+  const labels=["Q","W","E","R"];
+  return {passive:`${job} Mastery`,abilities:labels.map((s,i)=>[s,names[i],abilityDescription(names[i],s,base,tier,prefix)])};
+}
+function getCurrentKit(){
+  if(!player.baseJob)return BASE_KITS.Warrior;
+  if(player.jobTier===1)return BASE_KITS[player.baseJob];
+  if(player.jobTier===2)return makeKit(player.advancedJob,2,player.baseJob);
+  const parts=player.job.split(" ");
+  const prefix=parts.shift();
+  return makeKit(player.job,3,player.baseJob,prefix);
+}
+function refreshSkillLabels(){
+  const kit=getCurrentKit().abilities;
+  kit.forEach(([k,n])=>{
+    const slot=document.querySelector(`#skill-bar .skill-slot:nth-child(${["Q","W","E","R"].indexOf(k)+1}) small`);
+    if(slot)slot.textContent=n.length>9?n.slice(0,9):n;
+  });
+}
+function setUltimateBurst(color="#ffd700",radius=180,count=55){
+  spawnParticles(player.x+16,player.y+20,color,count);
+  for(let i=0;i<12;i++){
+    const ang=i*Math.PI*2/12;
+    particles.push({x:player.x+16+Math.cos(ang)*20,y:player.y+20+Math.sin(ang)*20,
+      vx:Math.cos(ang)*5,vy:Math.sin(ang)*5,color,life:30,size:4});
+  }
+  player.ultimateFlash={life:22,color,radius};
+}
+function spawnSummon(kind,count=3){
+  player.summons=player.summons||[];
+  for(let i=0;i<count;i++) player.summons.push({kind,x:player.x+16+(Math.random()-.5)*80,y:player.y+20+(Math.random()-.5)*60,life:480,damage:player.atk*.55});
+  toast(`${kind} summoned!`);
+}
+player.summons=player.summons||[];
+player.buffs=player.buffs||{atk:0,def:0,speed:0,crit:0};
+
+function useSkill(k){
+  if(player.cooldowns[k]>0)return;
+  const kit=getCurrentKit();
+  const ability=kit.abilities.find(a=>a[0]===k);
+  if(!ability)return;
+  const rank=Math.max(1,player.skillRanks[k]||1);
+  if(k==="R" && (player.skillRanks.R||0)<=0){toast("Spend a Skill Point to unlock your Ultimate.");return;}
+  const base=player.baseJob||"Warrior";
+  const tier=player.jobTier||0;
+  const scale=1+(rank-1)*0.18;
+  const mult=tier===3?7.5:tier===2?4.8:({Warrior:3.2,Rogue:3.4,Tank:2.8,Mage:4,Archer:3.6,Priest:3.8,Bard:3.3,Druid:3.7,Necromancer:4.2,Paladin:3.8}[base]||3.2);
+  const range=k==="Q"?95:k==="W"?155:k==="E"?120:280;
+  player.cooldowns[k]=Math.max(35,player.maxCooldowns[k]*(1-(base==="Mage"?.18:0))*(k==="R"?1:0.9));
+  player.isAttacking=true;player.attackTimer=18;
+
+  const nearby=()=>mobs.filter(m=>m.zone===currentZone&&m.alive&&Math.hypot(player.x+16-(m.x+m.width/2),player.y+20-(m.y+m.height/2))<=range);
+  const damage=(n=1)=>nearby().forEach(m=>m.takeDamage(player.atk*mult*n*scale));
+
+  if(k==="Q"){
+    if(["Mage","Archer"].includes(base)){
+      projectiles.push(new Projectile(player.x+16,player.y+20,player.facing==="right"?10:-10,false,player.atk*mult*.8*scale,
+        base==="Mage"?"#a29bfe":"#55efc4",currentZone));
+    } else damage(.45);
+  }
+  if(k==="W"){
+    if(base==="Necromancer"){spawnSummon("Skeleton",3+rank);damage(.35)}
+    else if(base==="Druid"){spawnParticles(player.x+16,player.y+20,"#55efc4",28);damage(.9)}
+    else {damage(.85);player.buffs.atk=Math.max(player.buffs.atk,360)}
+  }
+  if(k==="E"){
+    if(base==="Rogue"||base==="Mage"||base==="Archer"){player.x+=player.facing==="right"?75:-75;player.x=Math.max(0,Math.min(WORLD_WIDTH-player.width,player.x));damage(.55)}
+    else if(base==="Necromancer"){damage(.75);player.hp=Math.min(player.maxHp,player.hp+player.atk*.9*scale)}
+    else {player.hp=Math.min(player.maxHp,player.hp+player.maxHp*(base==="Priest"||base==="Paladin"||base==="Druid"?.35:.25));player.buffs.def=Math.max(player.buffs.def,300)}
+  }
+  if(k==="R"){
+    damage(1.65);
+    setUltimateBurst(base==="Necromancer"?"#7b2cbf":base==="Mage"?"#ffd166":base==="Druid"?"#55efc4":base==="Priest"||base==="Paladin"?"#fff":"#ffd700",
+      260,70);
+    if(base==="Necromancer")spawnSummon("Elite Skeleton",6+rank);
+    if(base==="Druid")spawnSummon("Ancient Treant",2);
+    if(base==="Mage"){
+      player.ultimateFlash={life:32,color:"#ffd166",radius:300};
+      toast("☀ SUNFALL! The battlefield is scorched!");
+    } else if(base==="Warrior")toast("⚔ TITAN CLEAVE!");
+    else if(base==="Rogue")toast("☠ ASSASSINATE!");
+    else toast(`${ability[1]} unleashed!`);
+  }
+  updateAll();
+}
+
+function updateSkillUI(){
+  const list=document.getElementById("skill-list");
+  const kit=getCurrentKit();
+  list.innerHTML=`<div><b>${player.job}</b> — ${kit.passive}</div><p style="color:#9aa">${(BASE_JOBS[player.baseJob]||{}).lore||"Choose a job to unlock its lore."}</p><div style="color:#ffd700">Skill Points: ${player.skillPoints}</div>`;
+  kit.abilities.forEach(([k,n,d])=>{
+    const row=document.createElement("div");row.className="row";
+    const rank=player.skillRanks[k]||0;
+    row.innerHTML=`<span><b>${k} — ${n}</b><br><small>${d}</small><br>Rank: ${rank}/5</span><button onclick="upgradeSkill('${k}')">${k==="R"&&rank===0?"Unlock":"Upgrade"}</button>`;
+    list.appendChild(row);
+  });
+  refreshSkillLabels();
+}
+function upgradeSkill(k){
+  if(player.skillPoints<=0){toast("No Skill Points.");return}
+  if(k==="R" && (player.skillRanks.R||0)<1){player.skillRanks.R=1;player.skillPoints--;toast("Ultimate unlocked!");updateAll();return}
+  if((player.skillRanks[k]||1)>=5){toast("That skill is maxed.");return}
+  player.skillRanks[k]++;player.skillPoints--;toast(`${getCurrentKit().abilities.find(a=>a[0]===k)[1]} upgraded!`);updateAll();
+}
+
+/* Make advanced/supremacy job selection show actual lore and abilities. */
+function promptBasicJobSelection(){
+  openPanel("class-select-box");
+  document.getElementById("class-select-title").textContent="Choose Base Job • Level 10";
+  const o=document.getElementById("class-options");o.innerHTML="";
+  for(const [name,s] of Object.entries(BASE_JOBS)){
+    const b=document.createElement("button");b.style.width="100%";b.style.margin="4px 0";
+    b.innerHTML=`<b>${name}</b> • STR ${s.str} DEX ${s.dex} INT ${s.int} VIT ${s.vit}<br><small>${s.lore}</small>`;
+    b.onclick=()=>selectJob(name,"base");o.appendChild(b);
+  }
+}
+function promptAdvancedJobSelection(){
+  openPanel("class-select-box");
+  document.getElementById("class-select-title").textContent=`Choose Advanced Job • ${player.baseJob}`;
+  const o=document.getElementById("class-options");o.innerHTML="";
+  ADVANCED_JOBS[player.baseJob].forEach(name=>{
+    const kit=makeKit(name,2,player.baseJob);
+    const b=document.createElement("button");b.style.width="100%";b.style.margin="4px 0";
+    b.innerHTML=`<b>${name}</b><br><small>${kit.abilities.map(a=>a[0]+" "+a[1]).join(" • ")}</small>`;
+    b.onclick=()=>selectJob(name,"advanced");o.appendChild(b);
+  });
+}
+function promptSupremacyJobSelection(){
+  openPanel("class-select-box");
+  document.getElementById("class-select-title").textContent="Choose Supremacy Job • Level 40";
+  const o=document.getElementById("class-options");o.innerHTML="";
+  SUPREMACY_PREFIXES.forEach(prefix=>{
+    const name=`${prefix} ${player.advancedJob}`;
+    const kit=makeKit(name,3,player.baseJob,prefix);
+    const b=document.createElement("button");b.style.width="100%";b.style.margin="4px 0";
+    b.innerHTML=`<b>${name}</b><br><small>${kit.abilities.map(a=>a[0]+" "+a[1]).join(" • ")}</small>`;
+    b.onclick=()=>selectJob(name,"supremacy");o.appendChild(b);
+  });
+}
+
+/* Correct job selection bonuses and immediately refresh the kit. */
+function selectJob(name,tier){
+  if(tier==="base"){
+    player.baseJob=name;player.job=name;player.jobTier=1;
+    const s=BASE_JOBS[name];player.str=s.str;player.dex=s.dex;player.int=s.int;player.vit=s.vit;player.passive=s.passive;
+    player.skillRanks={Q:1,W:1,E:1,R:0};player.skillPoints+=1;
+  }else if(tier==="advanced"){
+    player.advancedJob=name;player.job=name;player.jobTier=2;
+    player.str+=10;player.dex+=10;player.int+=10;player.vit+=10;player.skillRanks={Q:1,W:1,E:1,R:0};player.skillPoints+=2;
+  }else{
+    player.supremacyJob=name;player.job=name;player.jobTier=3;
+    player.str+=20;player.dex+=20;player.int+=20;player.vit+=20;player.skillRanks={Q:1,W:1,E:1,R:0};player.skillPoints+=3;
+    player.passive="Supremacy Aura";
+  }
+  recalculateStats();closePanels();refreshSkillLabels();updateAll();toast(`${name} unlocked!`);
+}
+
+/* Summons, buffs, and ultimate visual. */
+function updateClassSystems(){
+  if(player.buffs.atk>0)player.buffs.atk--;
+  if(player.buffs.def>0)player.buffs.def--;
+  if(player.buffs.speed>0)player.buffs.speed--;
+  if(player.buffs.crit>0)player.buffs.crit--;
+  player.summons.forEach((s,i)=>{
+    s.life--;
+    const target=mobs.find(m=>m.zone===currentZone&&m.alive);
+    if(target){
+      const dx=target.x-s.x,dy=target.y-s.y,d=Math.hypot(dx,dy)||1;
+      s.x+=dx/d*1.6;s.y+=dy/d*1.6;
+      if(d<30 && tick%28===0)target.takeDamage(s.damage);
+    }
+    if(s.life<=0)player.summons.splice(i,1);
+  });
+  if(player.ultimateFlash){
+    player.ultimateFlash.life--;
+    if(player.ultimateFlash.life<=0)player.ultimateFlash=null;
+  }
+}
+const oldUpdate=update;
+update=function(){
+  oldUpdate();
+  updateClassSystems();
+  if(player.buffs.atk>0) player.atk=Math.max(player.atk, player.atk);
+};
+
+const oldDraw=draw;
+draw=function(){
+  oldDraw();
+  if(player.summons)player.summons.forEach(s=>{
+    ctx.fillStyle=s.kind.includes("Skeleton")?"#cfd8dc":s.kind.includes("Treant")?"#55efc4":"#ab47bc";
+    ctx.fillRect(s.x-cameraX-8,s.y-8,16,16);
+    ctx.fillStyle="#fff";ctx.font="8px sans-serif";ctx.textAlign="center";ctx.fillText("✦",s.x-cameraX,s.y+3);
+  });
+  if(player.ultimateFlash){
+    const f=player.ultimateFlash;
+    ctx.save();ctx.globalAlpha=Math.max(0,f.life/32)*.28;
+    ctx.fillStyle=f.color;ctx.beginPath();ctx.arc(player.x+16-cameraX,player.y+20,f.radius*(1-f.life/40),0,Math.PI*2);ctx.fill();ctx.restore();
+  }
+};
+refreshSkillLabels();
+</script>
+
+</body>
+</html>

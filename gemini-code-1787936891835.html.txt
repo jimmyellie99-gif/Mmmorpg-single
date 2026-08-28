@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Oakhaven RPG</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#080b12;color:#e8edf2;font-family:Segoe UI,Arial,sans-serif}
+body{display:flex;justify-content:center;align-items:center}
+#game-container{position:relative;width:min(1000px,100vw);height:400px}
+canvas{display:block;width:100%;height:400px;background:#18222d;border:3px solid #66fcf1;image-rendering:pixelated}
+#ui-bar{position:absolute;top:8px;left:8px;right:8px;z-index:10;display:flex;gap:12px;align-items:center;justify-content:space-between;background:rgba(7,10,16,.9);border:1px solid #45a29e;border-radius:7px;padding:7px 11px;font-size:12px;pointer-events:none}
+.stat{color:#66fcf1;font-weight:700}.gold{color:#ffd700;font-weight:700}.xp{color:#d58cff;font-weight:700}
+#skill-bar{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);z-index:10;display:flex;gap:7px;background:rgba(7,10,16,.9);border:1px solid #45a29e;border-radius:9px;padding:6px}
+.skill-slot{width:48px;height:48px;border:2px solid #66fcf1;border-radius:6px;background:#202b38;color:#66fcf1;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;position:relative}
+.skill-slot.r{border-color:#ffd700;color:#ffd700}
+.skill-slot small{position:absolute;bottom:2px;left:0;right:0;text-align:center;font-size:8px;color:#c5c6c7}
+.cd-overlay{position:absolute;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;color:#ff6b6b;border-radius:4px}
+.panel{display:none;position:absolute;z-index:30;background:rgba(7,10,16,.97);border:2px solid #66fcf1;border-radius:9px;padding:15px;box-shadow:0 8px 30px #0009}
+.panel h2,.panel h3{margin:0 0 10px;color:#66fcf1}
+#stat-window{left:35px;top:50px;width:300px}
+#inventory-window{right:35px;top:50px;width:340px;max-height:330px;overflow:auto}
+#quest-window{left:35px;top:50px;width:360px}
+#skill-window{right:35px;top:50px;width:370px;max-height:330px;overflow:auto}
+#shop-box,#class-select-box,#character-box,#pause-box{left:50%;top:38px;transform:translateX(-50%);width:560px;max-height:325px;overflow:auto}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;background:#1e2935;padding:8px;border-radius:5px;margin:5px 0}
+button{border:0;border-radius:5px;padding:7px 11px;background:#66fcf1;color:#071016;font-weight:800;cursor:pointer}
+button:hover{background:#45a29e;color:white}
+button.goldBtn{background:#ffd700}
+button.danger{background:#ff5c69;color:white}
+button.secondary{background:#586575;color:white}
+input,select{background:#121923;color:white;border:1px solid #45a29e;border-radius:5px;padding:7px}
+.inv-item{cursor:pointer}.inv-item:hover{outline:1px solid #ffd700}
+.common{color:#b0bec5}.uncommon{color:#55efc4}.rare{color:#74b9ff}.epic{color:#a29bfe}.legendary{color:#ffeaa7;font-weight:800}
+#dialogue-box{display:none;position:absolute;z-index:25;bottom:70px;left:35px;right:35px;background:rgba(7,10,16,.97);border:2px solid #66fcf1;border-radius:9px;padding:13px}
+#dialogue-name{font-weight:800;color:#66fcf1;margin-bottom:5px}
+#dialogue-text{line-height:1.45}
+#toast{position:absolute;z-index:50;top:55px;left:50%;transform:translateX(-50%);background:rgba(11,12,16,.95);border:1px solid #ffd700;color:#fff;padding:8px 14px;border-radius:7px;display:none;font-weight:bold}
+.bar{height:7px;background:#263241;border-radius:4px;overflow:hidden;margin-top:3px}.bar>i{display:block;height:100%}
+#bossbar{display:none;position:absolute;z-index:12;top:48px;left:25%;width:50%;text-align:center;color:#ff6b6b;font-weight:800}
+#help{position:absolute;bottom:8px;left:10px;z-index:8;color:#aeb8c2;font-size:10px;text-align:left;line-height:1.35;pointer-events:none}
+#rpg-panel {
+ display:none; position:absolute; z-index:30; top:30px; left:80px; right:80px;
+ max-height:340px; overflow:auto; background:rgba(11,12,16,.97);
+ border:2px solid #66fcf1; border-radius:10px; padding:18px; text-align:left;
+ box-shadow:0 0 30px rgba(102,252,241,.18);
+}
+#rpg-panel h2 {margin:0 0 10px;color:#66fcf1}
+.rpg-grid {display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.rpg-card {background:#1f2833;border:1px solid #45a29e;border-radius:6px;padding:9px}
+.rpg-card strong {color:#ffd700}.muted{color:#9aa}
+.rpg-btn {background:#66fcf1;color:#0b0c10;border:0;border-radius:5px;padding:6px 10px;font-weight:bold;cursor:pointer}
+.rpg-btn.alt {background:#45a29e;color:white}.rpg-row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+</style>
+</head>
+<body>
+<div id="game-container">
+<canvas id="gameCanvas" width="1000" height="400"></canvas>
+
+<div id="ui-bar">
+ <div>Zone: <span id="zone-display" class="stat">Oakhaven Town</span></div>
+ <div>Job: <span id="job-display" class="stat">Novice</span> Lv <span id="level-display" class="stat">1</span></div>
+ <div>HP: <span id="hp-display" class="stat">100/100</span></div>
+ <div>XP: <span id="xp-display" class="xp">0/50</span></div>
+ <div>Gold: <span id="gold-display" class="gold">0</span></div>
+ <div>Quest: <span id="quest-display" class="stat">Talk to Elder</span></div>
+</div>
+
+<div id="skill-bar">
+ <div class="skill-slot">Q<small>Arc</small><span id="cd-q" class="cd-overlay" style="display:none"></span></div>
+ <div class="skill-slot">W<small>Blast</small><span id="cd-w" class="cd-overlay" style="display:none"></span></div>
+ <div class="skill-slot">E<small>Heal</small><span id="cd-e" class="cd-overlay" style="display:none"></span></div>
+ <div class="skill-slot r">R<small>ULT</small><span id="cd-r" class="cd-overlay" style="display:none"></span></div>
+</div>
+
+<div id="bossbar"><div id="boss-name">VOID TITAN</div><div class="bar"><i id="boss-hp" style="width:100%;background:#e63946"></i></div></div>
+<div id="help">Move: WASD/Arrows • Attack: J • Ranged: K • Interact: F/Space • Stats: C • Inventory: I • Skills: Q/W/E/R • Quests: L • Skill Tree: T • Character: V • Pause: Esc</div>
+<div id="toast"></div>
+
+<div id="stat-window" class="panel">
+<h3>Character Stats [C]</h3>
+<div>Job: <span id="st-job" class="stat"></span></div>
+<div>Level: <span id="st-level"></span> | Attribute Points: <span id="st-points"></span></div>
+<div class="row">STR <span id="st-str"></span><button onclick="spendPoint('str')">+</button></div>
+<div class="row">DEX <span id="st-dex"></span><button onclick="spendPoint('dex')">+</button></div>
+<div class="row">INT <span id="st-int"></span><button onclick="spendPoint('int')">+</button></div>
+<div class="row">VIT <span id="st-vit"></span><button onclick="spendPoint('vit')">+</button></div>
+<hr>
+<div>ATK: <span id="st-atk"></span> | DEF: <span id="st-def"></span></div>
+<div>Crit: <span id="st-crit"></span>% | Move Speed: <span id="st-speed"></span></div>
+<div>Weapon: <span id="eq-weapon" class="stat"></span></div>
+<div>Armor: <span id="eq-armor" class="stat"></span></div>
+<div>Accessory: <span id="eq-acc" class="stat"></span></div>
+<button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="inventory-window" class="panel">
+<h3>Inventory [I]</h3><div id="inventory-list"></div><button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="quest-window" class="panel">
+<h3>Quest Log [L]</h3><div id="quest-list"></div><button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="skill-window" class="panel">
+<h3>Skill Tree [T]</h3><div id="skill-list"></div><button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="dialogue-box">
+<div id="dialogue-name"></div><div id="dialogue-text"></div>
+<div style="margin-top:8px"><button onclick="advanceDialogue()">Continue [F]</button></div>
+</div>
+
+<div id="shop-box" class="panel">
+<h3>Blacksmith's Armory</h3>
+<div id="shop-items"></div><button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="class-select-box" class="panel">
+<h3 id="class-select-title">Choose Your Job</h3><div id="class-options"></div>
+</div>
+
+<div id="character-box" class="panel">
+<h3>Character Builder [V]</h3>
+<div class="row"><label>Name <input id="char-name" maxlength="16" value="Hero"></label></div>
+<div class="row"><label>Build <select id="char-build"><option value="balanced">Balanced</option><option value="power">Power</option><option value="speed">Speed</option><option value="magic">Magic</option><option value="tank">Tank</option></select></label></div>
+<button onclick="applyCharacter()">Apply Character</button>
+<button class="secondary" onclick="closePanels()">Close</button>
+</div>
+
+<div id="pause-box" class="panel">
+<h3>Paused</h3>
+<button onclick="togglePause()">Resume</button>
+<button class="danger" onclick="resetGame()">New Game</button>
+</div>
+
+<div id="rpg-panel">
+ <h2 id="panel-title">RPG Menu</h2>
+ <div id="panel-content"></div>
+ <div class="rpg-row"><button class="rpg-btn alt" onclick="closeRPGPanel()">Close [Esc]</button></div>
+</div>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const WORLD_WIDTH = 2500;
+
+let cameraX = 0, tick = 0, paused = false;
+let windowToastTimer = null;
+const keys = {};
+const panelIds = ["stat-window","inventory-window","quest-window","skill-window","shop-box","class-select-box","character-box","pause-box","rpg-panel"];
+
+const BASE_JOBS = {
+ Warrior:{str:15,dex:8,int:4,vit:14,passive:"Rage Engine",lore:"Frontline melee champions."},
+ Rogue:{str:8,dex:18,int:6,vit:8,passive:"Killing Intent",lore:"Elusive assassin specializing in critical strikes."},
+ Tank:{str:10,dex:6,int:4,vit:20,passive:"Unbreakable",lore:"Living fortresses built to absorb damage."},
+ Mage:{str:4,dex:8,int:20,vit:6,passive:"Arcane Mastery",lore:"Manipulates raw area magic."}
+};
+
+const BASE_KITS = {
+ Warrior:{passive:"Rage Engine",abilities:[["Q","Cleave","Melee strike."],["W","War Cry","Bonus ATK."],["E","Second Wind","Heal."],["R","Titan Cleave","Shockwave."]]},
+ Rogue:{passive:"Killing Intent",abilities:[["Q","Shadowstep","Blink forward."],["W","Venom Fan","Poison attack."],["E","Vanish","Speed boost."],["R","Assassinate","Lethal burst."]]},
+ Tank:{passive:"Unbreakable",abilities:[["Q","Shield Bash","Stun strike."],["W","Fortify","Armor boost."],["E","Taunt","Weaken foes."],["R","Aegis","Defensive barrier."]]},
+ Mage:{passive:"Arcane Mastery",abilities:[["Q","Arcane Bolt","Magic projectile."],["W","Meteor","Area blast."],["E","Blink","Teleport."],["R","Sunfall","Solar drop."]]}
+};
+
+const ZONES = [
+ {name:"Oakhaven Town",req:"Talk to Elder Eldrin",tier:0,state:"NOT_STARTED"},
+ {name:"Whispering Swamp",req:"Defeat 8 Slimes",tier:1,kills:0,target:8,state:"LOCKED"},
+ {name:"Ashen Caverns",req:"Defeat 10 Skeletons",tier:2,kills:0,target:10,state:"LOCKED"},
+ {name:"Dragon's Peak",req:"Defeat 3 VOID TITANS",tier:3,kills:0,target:3,state:"LOCKED"}
+];
+
+const player = {
+ name:"Hero", x:100, y:220, width:32, height:40, speed:3.5,
+ hp:100, maxHp:100, level:1, xp:0, xpToNext:50, maxLevel:50, gold:0,
+ job:"Novice", jobTier:0, baseJob:"",
+ str:5, dex:5, int:5, vit:5, points:0, atk:12, def:2, crit:5,
+ attackCooldown:0, attackTimer:0, isAttacking:false, facing:"right",
+ cooldowns:{Q:0,W:0,E:0,R:0}, maxCooldowns:{Q:120,W:240,E:360,R:720},
+ skillRanks:{Q:1,W:1,E:1,R:0}, skillPoints:0,
+ inventory:[], equipment:{Weapon:null,Armor:null,Accessory:null}
+};
+
+let currentZone = 0, dialogueNPC = null, dialogueLines = [], dialogueIndex = 0;
+const projectiles = [], particles = [], damageNumbers = [];
+
+function toast(msg){
+ const el = document.getElementById("toast");
+ el.textContent = msg; el.style.display = "block";
+ clearTimeout(windowToastTimer);
+ windowToastTimer = setTimeout(()=> el.style.display="none", 2200);
+}
+
+function closePanels(){
+ panelIds.forEach(id => document.getElementById(id).style.display = "none");
+ dialogueNPC = null;
+ document.getElementById("dialogue-box").style.display = "none";
+}
+
+function openPanel(id){
+ closePanels();
+ document.getElementById(id).style.display = "block";
+}
+
+function recalculateStats(){
+ let atk = player.str * 2 + player.dex;
+ let def = Math.floor(player.vit / 2);
+ if(player.equipment.Weapon) atk += player.equipment.Weapon.stat;
+ if(player.equipment.Armor) def += player.equipment.Armor.stat;
+
+ player.maxHp = 100 + player.vit * 10;
+ player.hp = Math.min(player.maxHp, player.hp);
+ player.atk = atk; player.def = def;
+}
+
+function addXP(amount){
+ player.xp += amount;
+ while(player.xp >= player.xpToNext && player.level < player.maxLevel){
+  player.xp -= player.xpToNext;
+  player.level++; player.points += 5; player.skillPoints++;
+  player.xpToNext = Math.floor(50 * Math.pow(1.2, player.level - 1));
+  recalculateStats(); player.hp = player.maxHp;
+  toast(`LEVEL UP! Level ${player.level}`);
+ }
+ updateUI();
+}
+
+function spendPoint(stat){
+ if(player.points <= 0) return;
+ player[stat]++; player.points--; recalculateStats(); updateUI();
+}
+
+function getCurrentKit(){
+ return BASE_KITS[player.baseJob] || BASE_KITS.Warrior;
+}
+
+function useSkill(k){
+ if(player.cooldowns[k] > 0) return;
+ player.cooldowns[k] = player.maxCooldowns[k];
+ player.isAttacking = true; player.attackTimer = 15;
+ toast(`${k} Ability Used!`);
+}
+
+function upgradeSkill(k){
+ if(player.skillPoints <= 0) return;
+ player.skillRanks[k] = (player.skillRanks[k] || 0) + 1;
+ player.skillPoints--; updateUI();
+}
+
+function selectJob(name){
+ player.baseJob = name; player.job = name; player.jobTier = 1;
+ const s = BASE_JOBS[name]; player.str = s.str; player.dex = s.dex; player.int = s.int; player.vit = s.vit;
+ recalculateStats(); closePanels(); updateUI(); toast(`${name} Class Selected!`);
+}
+
+function promptBasicJobSelection(){
+ openPanel("class-select-box");
+ const o = document.getElementById("class-options"); o.innerHTML = "";
+ for(const [name, s] of Object.entries(BASE_JOBS)){
+  const b = document.createElement("button"); b.style.width = "100%"; b.style.margin = "4px 0";
+  b.innerHTML = `<b>${name}</b><br><small>${s.lore}</small>`;
+  b.onclick = () => selectJob(name);
+  o.appendChild(b);
+ }
+}
+
+function melee(){
+ if(player.attackCooldown > 0) return;
+ player.attackCooldown = 18; player.isAttacking = true; player.attackTimer = 12;
+ mobs.filter(m => m.zone === currentZone && m.alive).forEach(m => {
+  if(Math.hypot(player.x - m.x, player.y - m.y) < 50) m.takeDamage(player.atk);
+ });
+}
+
+class Mob {
+ constructor(name, type, zone, x, y, hp, atk, xp, gold){
+  Object.assign(this, {name, type, zone, x, y, maxHp:hp, hp, atk, xpYield:xp, goldYield:gold, alive:true, width:32, height:40});
+ }
+ update(){
+  if(this.zone !== currentZone || !this.alive) return;
+  const dx = player.x - this.x, dy = player.y - this.y, dist = Math.hypot(dx, dy);
+  if(dist < 200){ this.x += (dx / dist) * 1.2; this.y += (dy / dist) * 1.2; }
+  if(dist < 25) player.hp = Math.max(0, player.hp - this.atk * .02);
+ }
+ takeDamage(dmg){
+  this.hp -= dmg;
+  if(this.hp <= 0){
+   this.alive = false; addXP(this.xpYield); player.gold += this.goldYield;
+   const z = ZONES[this.zone];
+   if(z.kills !== undefined){ z.kills++; if(z.kills >= z.target) z.state = "COMPLETED"; }
+   updateUI();
+  }
+ }
+ draw(){
+  if(this.zone !== currentZone || !this.alive) return;
+  ctx.fillStyle = "#e63946"; ctx.fillRect(this.x - cameraX, this.y, 32, 40);
+ }
+}
+
+const mobs = [
+ new Mob("Slime","slime",1,300,200,60,8,20,15),
+ new Mob("Skeleton","skeleton",2,400,220,150,18,50,40)
+];
+
+const npcs = [{name:"Elder Eldrin",zone:0,x:180,y:200}];
+
+function interact(){
+ const npc = npcs.find(n => n.zone === currentZone && Math.hypot(player.x - n.x, player.y - n.y) < 60);
+ if(!npc) return;
+ dialogueNPC = npc;
+ dialogueLines = ["Welcome to Oakhaven!", "Select your job class when ready."];
+ document.getElementById("dialogue-name").textContent = npc.name;
+ document.getElementById("dialogue-text").textContent = dialogueLines[0];
+ document.getElementById("dialogue-box").style.display = "block";
+ promptBasicJobSelection();
+}
+
+function advanceDialogue(){ closePanels(); }
+
+function applyCharacter(){
+ player.name = document.getElementById("char-name").value || "Hero";
+ closePanels(); updateUI();
+}
+
+function togglePause(){ paused = !paused; document.getElementById("pause-box").style.display = paused ? "block" : "none"; }
+function resetGame(){ location.reload(); }
+
+function updateUI(){
+ document.getElementById("zone-display").textContent = ZONES[currentZone].name;
+ document.getElementById("job-display").textContent = player.job;
+ document.getElementById("level-display").textContent = player.level;
+ document.getElementById("hp-display").textContent = `${Math.ceil(player.hp)}/${player.maxHp}`;
+ document.getElementById("xp-display").textContent = `${player.xp}/${player.xpToNext}`;
+ document.getElementById("gold-display").textContent = player.gold;
+ document.getElementById("st-str").textContent = player.str;
+ document.getElementById("st-dex").textContent = player.dex;
+ document.getElementById("st-int").textContent = player.int;
+ document.getElementById("st-vit").textContent = player.vit;
+ document.getElementById("st-points").textContent = player.points;
+ document.getElementById("st-atk").textContent = player.atk;
+ document.getElementById("st-def").textContent = player.def;
+}
+
+function update(){
+ if(paused) return;
+ tick++;
+ if(player.attackCooldown > 0) player.attackCooldown--;
+
+ if(keys.ArrowRight || keys.d){ player.x += player.speed; player.facing = "right"; }
+ if(keys.ArrowLeft || keys.a){ player.x -= player.speed; player.facing = "left"; }
+ if(keys.ArrowUp || keys.w){ player.y -= player.speed; }
+ if(keys.ArrowDown || keys.s){ player.y += player.speed; }
+
+ player.x = Math.max(0, Math.min(WORLD_WIDTH - player.width, player.x));
+ player.y = Math.max(0, Math.min(360, player.y));
+ cameraX = Math.max(0, Math.min(WORLD_WIDTH - canvas.width, player.x - canvas.width / 2));
+
+ mobs.forEach(m => m.update());
+}
+
+function draw(){
+ ctx.clearRect(0, 0, canvas.width, 400);
+ ctx.fillStyle = "#20252b"; ctx.fillRect(0,0,canvas.width,400);
+ npcs.forEach(n => {
+  if(n.zone === currentZone){
+   ctx.fillStyle = "#ffd54f"; ctx.fillRect(n.x - cameraX, n.y, 32, 40);
+  }
+ });
+ mobs.forEach(m => m.draw());
+ ctx.fillStyle = "#66fcf1"; ctx.fillRect(player.x - cameraX, player.y, 32, 40);
+}
+
+window.addEventListener("keydown", e => {
+ keys[e.key] = true;
+ const k = e.key.toLowerCase();
+ if(k === "j") melee();
+ if(["q","w","e","r"].includes(k)) useSkill(k.toUpperCase());
+ if(k === "f" || e.key === " ") interact();
+ if(k === "c") openPanel("stat-window");
+ if(k === "i") openPanel("inventory-window");
+ if(k === "escape") togglePause();
+});
+
+window.addEventListener("keyup", e => keys[e.key] = false);
+
+// GAME LOOP ENGINE SETUP
+function loop(){
+ update();
+ draw();
+ requestAnimationFrame(loop);
+}
+
+// INITIALIZATION
+recalculateStats();
+updateUI();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
